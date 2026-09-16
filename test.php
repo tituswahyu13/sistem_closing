@@ -40,7 +40,7 @@ try {
     $pdo->exec("
         INSERT IGNORE INTO tmp_eliminasi (no_pdam, alasan)
         SELECT no_pdam, 'Tunggakan' FROM spd_tunggak c 
-        WHERE c.IS_DELETE = 0 AND ((c.IS_YKK = 0 AND c.LUNAS = 0) OR (c.IS_YKK = 1 AND c.PH = 'P'));
+        WHERE c.IS_DELETE = 0 AND c.IS_YKK = 0 AND c.LUNAS = 0 AND (c.PH IS NULL OR c.PH != 'P');
     ");
     $t2 = microtime(true);
     echo "   -> Tunggakan : " . round($t2 - $t1, 3) . "s\n";

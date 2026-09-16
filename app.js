@@ -23,10 +23,10 @@ CREATE TEMPORARY TABLE IF NOT EXISTS tmp_eliminasi (
 TRUNCATE TABLE tmp_eliminasi;
 
 -- [2. Kumpulkan Pelanggan Tereliminasi ke Memori]
--- A. Data Tunggakan
+-- A. Data Tunggakan (Hanya belum lunas dan bukan status penghapusan / PH != 'P')
 INSERT IGNORE INTO tmp_eliminasi (no_pdam, alasan)
 SELECT no_pdam, 'Tunggakan' FROM spd_tunggak c 
-WHERE c.IS_DELETE = 0 AND ((c.IS_YKK = 0 AND c.LUNAS = 0) OR (c.IS_YKK = 1 AND c.PH = 'P'));
+WHERE c.IS_DELETE = 0 AND c.IS_YKK = 0 AND c.LUNAS = 0 AND (c.PH IS NULL OR c.PH != 'P');
 
 -- B. Data Penertiban
 INSERT IGNORE INTO tmp_eliminasi (no_pdam, alasan)
@@ -79,6 +79,7 @@ SELECT
     a.RK, 
     a.NON_AIR,
     CASE
+        WHEN a.STGOL_ID IN ('IB', 'IIB1', 'IIB3', 'IA', 'IIB2', 'IB3', 'IB2', 'IB1', 'IIB4') THEN CONCAT('Golongan ', a.STGOL_ID)
         WHEN a.STATUS != 'a' THEN CONCAT('Status ', UPPER(a.STATUS))
         WHEN LOWER(b.NAMA) LIKE '%rumdis%' THEN 'Rumdis'
         WHEN LOWER(b.NAMA) LIKE '%rumdin%' THEN 'Rumdin'
@@ -94,11 +95,16 @@ WHERE
     AND a.STATUS != 'l' 
     AND a.FLAG = '0' 
     AND a.LOKBAY_ID IN ('KB', 'KM', 'KS', 'L') 
-    AND a.STGOL_ID IN ('IIA1','IIA2','IIA3','IIIA','IIIB','IVA','IVB')
     AND (
-        a.STATUS != 'a'
-        OR (b.nama LIKE '%rumdis%' OR b.nama LIKE '%rumdin%' OR b.nama LIKE '%rusus%')
-        OR x.no_pdam IS NOT NULL
+        a.STGOL_ID IN ('IB', 'IIB1', 'IIB3', 'IA', 'IIB2', 'IB3', 'IB2', 'IB1', 'IIB4')
+        OR (
+            a.STGOL_ID IN ('IIA1','IIA2','IIA3','IIIA','IIIB','IVA','IVB')
+            AND (
+                a.STATUS != 'a'
+                OR (b.nama LIKE '%rumdis%' OR b.nama LIKE '%rumdin%' OR b.nama LIKE '%rusus%')
+                OR x.no_pdam IS NOT NULL
+            )
+        )
     );`
     };
 };
@@ -191,6 +197,8 @@ function getAlasanBadge(alasan) {
         badgeClass = 'badge-warning';
     } else if (alasan === 'Subsidi' || alasan === 'Realisasi') {
         badgeClass = 'badge-success';
+    } else if (alasan.startsWith('Golongan')) {
+        badgeClass = 'badge-purple';
     }
     
     return `<span class="badge ${badgeClass}">${alasan}</span>`;

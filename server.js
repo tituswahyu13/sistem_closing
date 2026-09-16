@@ -35,7 +35,7 @@ app.get('/api/ykk/beli', async (req, res) => {
               AND LOWER(b.NAMA) NOT LIKE '%rusus%'
               AND NOT EXISTS (
                   SELECT 1 FROM spd_tunggak c WHERE c.NO_PDAM = a.NO_PDAM
-                  AND ((c.IS_DELETE = 0 AND c.IS_YKK = 0 AND c.LUNAS = 0) OR (c.IS_DELETE = 0 AND c.IS_YKK = 1 AND c.PH = 'P'))
+                  AND (c.IS_DELETE = 0 AND c.IS_YKK = 0 AND c.LUNAS = 0 AND (c.PH IS NULL OR c.PH != 'P'))
               )
               AND NOT EXISTS (
                   SELECT 1 FROM spd_bon d WHERE d.NO_PDAM = a.NO_PDAM AND d.TANGGAL LIKE '2026-08-%' AND d.IS_DELETE = '0' AND d.STPLYN_ID LIKE 't%' AND d.LUNAS = '0'
@@ -64,7 +64,7 @@ app.get('/api/ykk/batal', async (req, res) => {
                 WHEN LOWER(b.NAMA) LIKE '%rumdis%' THEN 'Rumdis'
                 WHEN LOWER(b.NAMA) LIKE '%rumdin%' THEN 'Rumdin'
                 WHEN LOWER(b.NAMA) LIKE '%rusus%' THEN 'Rusus'
-                WHEN EXISTS (SELECT 1 FROM spd_tunggak c WHERE c.NO_PDAM=a.NO_PDAM AND ((c.IS_DELETE=0 AND c.IS_YKK=0 AND c.LUNAS=0) OR (c.IS_DELETE=0 AND c.IS_YKK=1 AND c.PH='P'))) THEN 'Tunggakan'
+                WHEN EXISTS (SELECT 1 FROM spd_tunggak c WHERE c.NO_PDAM=a.NO_PDAM AND (c.IS_DELETE=0 AND c.IS_YKK=0 AND c.LUNAS=0 AND (c.PH IS NULL OR c.PH != 'P'))) THEN 'Tunggakan'
                 WHEN EXISTS (SELECT 1 FROM spd_bon d WHERE d.NO_PDAM=a.NO_PDAM AND d.TANGGAL LIKE '2026-08-%' AND d.IS_DELETE='0' AND d.STPLYN_ID LIKE 't%' AND d.LUNAS='0') THEN 'Penertiban'
                 WHEN EXISTS (SELECT 1 FROM spd_realmohon e WHERE e.NO_PDAM=a.NO_PDAM AND e.TANGGAL LIKE '2026-08%' AND e.STPLYN_ID LIKE 't%') THEN 'Realisasi'
                 WHEN EXISTS (SELECT 1 FROM spd_rekening f WHERE f.NO_PDAM=a.NO_PDAM AND f.SUBSIDI<>0 AND f.FLAG=0) THEN 'Subsidi'
@@ -79,7 +79,7 @@ app.get('/api/ykk/batal', async (req, res) => {
               AND a.STGOL_ID IN ('IIA1','IIA2','IIA3','IIIA','IIIB','IVA','IVB')
               AND (
                   LOWER(b.NAMA) LIKE '%rumdis%' OR LOWER(b.NAMA) LIKE '%rumdin%' OR LOWER(b.NAMA) LIKE '%rusus%'
-                  OR EXISTS (SELECT 1 FROM spd_tunggak c WHERE c.NO_PDAM=a.NO_PDAM AND ((c.IS_DELETE=0 AND c.IS_YKK=0 AND c.LUNAS=0) OR (c.IS_DELETE=0 AND c.IS_YKK=1 AND c.PH='P')))
+                  OR EXISTS (SELECT 1 FROM spd_tunggak c WHERE c.NO_PDAM=a.NO_PDAM AND (c.IS_DELETE=0 AND c.IS_YKK=0 AND c.LUNAS=0 AND (c.PH IS NULL OR c.PH != 'P')))
                   OR EXISTS (SELECT 1 FROM spd_bon d WHERE d.NO_PDAM=a.NO_PDAM AND d.TANGGAL LIKE '2026-08-%' AND d.IS_DELETE='0' AND d.STPLYN_ID LIKE 't%' AND d.LUNAS='0')
                   OR EXISTS (SELECT 1 FROM spd_realmohon e WHERE e.NO_PDAM=a.NO_PDAM AND e.TANGGAL LIKE '2026-08%' AND e.STPLYN_ID LIKE 't%')
                   OR EXISTS (SELECT 1 FROM spd_rekening f WHERE f.NO_PDAM=a.NO_PDAM AND f.SUBSIDI<>0 AND f.FLAG=0)

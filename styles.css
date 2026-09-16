@@ -620,6 +620,8 @@ h2 { font-size: 1.25rem; }
 }
 
 .badge {
+    display: inline-block;
+    white-space: nowrap;
     padding: 0.25rem 0.6rem;
     border-radius: 20px;
     font-size: 0.75rem;
@@ -648,6 +650,12 @@ h2 { font-size: 1.25rem; }
     background: rgba(16, 185, 129, 0.2);
     color: #34d399;
     border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-purple {
+    background: rgba(168, 85, 247, 0.2);
+    color: #c084fc;
+    border: 1px solid rgba(168, 85, 247, 0.3);
 }
 
 /* Pagination */

@@ -53,14 +53,14 @@ if ($action === 'beli' || $action === 'batal') {
             TRUNCATE TABLE tmp_eliminasi;
         ");
 
-        // 1. Data Tunggakan
+        // 1. Data Tunggakan (Hanya tunggakan murni belum lunas dan bukan penghapusan / PH != 'P')
         $pdo->exec("
             INSERT IGNORE INTO tmp_eliminasi (no_pdam, alasan)
             SELECT no_pdam, 'Tunggakan' FROM spd_tunggak c 
-            WHERE c.IS_DELETE = 0 AND (
-                (c.IS_YKK = 0 AND c.LUNAS = 0) 
-                OR (c.IS_YKK = 1 AND c.PH = 'P')
-            );
+            WHERE c.IS_DELETE = 0 
+              AND c.IS_YKK = 0 
+              AND c.LUNAS = 0 
+              AND (c.PH IS NULL OR c.PH != 'P');
         ");
 
         // 2. Data Penertiban (spd_bon)
@@ -126,6 +126,7 @@ if ($action === 'beli' || $action === 'batal') {
                     a.RK, 
                     a.NON_AIR,
                     CASE
+                        WHEN a.STGOL_ID IN ('IB', 'IIB1', 'IIB3', 'IA', 'IIB2', 'IB3', 'IB2', 'IB1', 'IIB4') THEN CONCAT('Golongan ', a.STGOL_ID)
                         WHEN a.STATUS != 'a' THEN CONCAT('Status ', UPPER(a.STATUS))
                         WHEN LOWER(b.NAMA) LIKE '%rumdis%' THEN 'Rumdis'
                         WHEN LOWER(b.NAMA) LIKE '%rumdin%' THEN 'Rumdin'
@@ -141,11 +142,16 @@ if ($action === 'beli' || $action === 'batal') {
                     AND a.STATUS != 'l' 
                     AND a.FLAG = '0' 
                     AND a.LOKBAY_ID IN ('KB', 'KM', 'KS', 'L') 
-                    AND a.STGOL_ID IN ('IIA1','IIA2','IIA3','IIIA','IIIB','IVA','IVB')
                     AND (
-                        a.STATUS != 'a'
-                        OR (b.nama LIKE '%rumdis%' OR b.nama LIKE '%rumdin%' OR b.nama LIKE '%rusus%')
-                        OR x.no_pdam IS NOT NULL
+                        a.STGOL_ID IN ('IB', 'IIB1', 'IIB3', 'IA', 'IIB2', 'IB3', 'IB2', 'IB1', 'IIB4')
+                        OR (
+                            a.STGOL_ID IN ('IIA1','IIA2','IIA3','IIIA','IIIB','IVA','IVB')
+                            AND (
+                                a.STATUS != 'a'
+                                OR (b.nama LIKE '%rumdis%' OR b.nama LIKE '%rumdin%' OR b.nama LIKE '%rusus%')
+                                OR x.no_pdam IS NOT NULL
+                            )
+                        )
                     )
             ";
             $stmt = $pdo->prepare($query);
