@@ -44,11 +44,11 @@ $tanggalLike = sprintf("%04d-%02d", $year, $month);
 
 if ($action === 'beli' || $action === 'batal') {
     try {
-        // Buat tabel eliminasi in-memory untuk optimasi performa tinggi (mengatasi database 10jt baris)
+        // Buat tabel eliminasi in-memory untuk optimasi performa tinggi (mengatasi database jutaan baris)
         $pdo->exec("
             CREATE TEMPORARY TABLE IF NOT EXISTS tmp_eliminasi (
-                no_pdam VARCHAR(30) CHARACTER SET utf8 COLLATE utf8_general_ci PRIMARY KEY,
-                alasan VARCHAR(30)
+                no_pdam VARCHAR(10) CHARACTER SET utf8 COLLATE utf8_general_ci PRIMARY KEY,
+                alasan VARCHAR(20)
             ) ENGINE=MEMORY;
             TRUNCATE TABLE tmp_eliminasi;
         ");
@@ -57,7 +57,10 @@ if ($action === 'beli' || $action === 'batal') {
         $pdo->exec("
             INSERT IGNORE INTO tmp_eliminasi (no_pdam, alasan)
             SELECT no_pdam, 'Tunggakan' FROM spd_tunggak c 
-            WHERE (c.IS_DELETE = 0 AND c.IS_YKK = 0 AND c.LUNAS = 0) OR (c.IS_DELETE = 0 AND c.IS_YKK = 1 AND c.PH = 'P');
+            WHERE c.IS_DELETE = 0 AND (
+                (c.IS_YKK = 0 AND c.LUNAS = 0) 
+                OR (c.IS_YKK = 1 AND c.PH = 'P')
+            );
         ");
 
         // 2. Data Penertiban (spd_bon)
@@ -76,12 +79,13 @@ if ($action === 'beli' || $action === 'batal') {
         ");
         $stmtReal->execute(['tgl' => $tanggalLike]);
 
-        // 4. Data Subsidi (spd_rekening)
-        $pdo->exec("
+        // 4. Data Subsidi (spd_rekening periode terpilih)
+        $stmtSub = $pdo->prepare("
             INSERT IGNORE INTO tmp_eliminasi (no_pdam, alasan)
             SELECT no_pdam, 'Subsidi' FROM spd_rekening f 
-            WHERE f.subsidi != 0 AND f.FLAG = '0';
+            WHERE f.PERIODE = :periode AND f.subsidi != 0 AND f.FLAG = '0';
         ");
+        $stmtSub->execute(['periode' => $periode]);
 
         if ($action === 'beli') {
             $query = "

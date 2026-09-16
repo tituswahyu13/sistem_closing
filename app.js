@@ -15,131 +15,90 @@ const getTanggalLike = (periode) => {
 
 const getQueries = (periode) => {
     const tanggal = getTanggalLike(periode);
+    const tmpSetup = `-- [1. Buat Tabel Eliminasi In-Memory (Hash Index)]
+CREATE TEMPORARY TABLE IF NOT EXISTS tmp_eliminasi (
+    no_pdam VARCHAR(10) CHARACTER SET utf8 COLLATE utf8_general_ci PRIMARY KEY,
+    alasan VARCHAR(20)
+) ENGINE=MEMORY;
+TRUNCATE TABLE tmp_eliminasi;
+
+-- [2. Kumpulkan Pelanggan Tereliminasi ke Memori]
+-- A. Data Tunggakan
+INSERT IGNORE INTO tmp_eliminasi (no_pdam, alasan)
+SELECT no_pdam, 'Tunggakan' FROM spd_tunggak c 
+WHERE c.IS_DELETE = 0 AND ((c.IS_YKK = 0 AND c.LUNAS = 0) OR (c.IS_YKK = 1 AND c.PH = 'P'));
+
+-- B. Data Penertiban
+INSERT IGNORE INTO tmp_eliminasi (no_pdam, alasan)
+SELECT no_pdam, 'Penertiban' FROM spd_bon d 
+WHERE d.TANGGAL LIKE '${tanggal}-%' AND d.IS_DELETE = '0' AND d.STPLYN_ID LIKE 't%' AND d.LUNAS = '0';
+
+-- C. Data Realisasi
+INSERT IGNORE INTO tmp_eliminasi (no_pdam, alasan)
+SELECT no_pdam, 'Realisasi' FROM spd_realmohon e 
+WHERE e.TANGGAL LIKE '${tanggal}%' AND e.STPLYN_ID LIKE 't%';
+
+-- D. Data Subsidi Periode Terpilih
+INSERT IGNORE INTO tmp_eliminasi (no_pdam, alasan)
+SELECT no_pdam, 'Subsidi' FROM spd_rekening f 
+WHERE f.PERIODE = '${periode}' AND f.subsidi != 0 AND f.FLAG = '0';
+`;
+
     return {
-        beli: `SELECT a.*, b.* 
+        beli: `${tmpSetup}
+-- [3. Kueri Utama Rencana Beli YKK]
+SELECT 
+    a.NO_PDAM, 
+    b.NAMA, 
+    a.PERIODE, 
+    a.LOKBAY_ID, 
+    a.STGOL_ID, 
+    a.RK, 
+    a.NON_AIR
 FROM spd_rekening a 
 JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+LEFT JOIN tmp_eliminasi x ON x.no_pdam = a.no_pdam
 WHERE 
-    -- 1. Kondisi Data Utama
     a.PERIODE = '${periode}' 
     AND a.STATUS = 'a' 
     AND a.FLAG = '0' 
     AND a.LOKBAY_ID IN ('KB', 'KM', 'KS', 'L') 
     AND a.STGOL_ID IN ('IIA1','IIA2','IIA3','IIIA','IIIB','IVA','IVB')
-
-    -- 2. Hilangkan data dengan b.nama like rumdis, rumdin, rusus
     AND b.nama NOT LIKE '%rumdis%' 
     AND b.nama NOT LIKE '%rumdin%' 
     AND b.nama NOT LIKE '%rusus%'
-
-    -- 3. Hilangkan data yang ada di Data Tunggakan
-    AND a.no_pdam NOT IN (
-        SELECT no_pdam 
-        FROM spd_tunggak c 
-        WHERE (c.IS_DELETE = 0 AND c.IS_YKK = 0 AND c.LUNAS = 0)
-           OR (c.IS_DELETE = 0 AND c.IS_YKK = 1 AND c.PH = 'P')
-    )
-
-    -- 4. Hilangkan data yang ada di Data Penertiban
-    AND a.no_pdam NOT IN (
-        SELECT no_pdam 
-        FROM spd_bon d 
-        WHERE d.TANGGAL LIKE '${tanggal}-%' 
-          AND d.IS_DELETE = '0' 
-          AND d.STPLYN_ID LIKE 't%' 
-          AND d.LUNAS = '0'
-    )
-
-    -- 5. Hilangkan data yang ada di Data Realisasi
-    AND a.no_pdam NOT IN (
-        SELECT no_pdam 
-        FROM spd_realmohon e 
-        WHERE e.TANGGAL LIKE '${tanggal}%' 
-          AND e.STPLYN_ID LIKE 't%'
-    )
-
-    -- 6. Hilangkan data yang ada di Data Subsidi
-    AND a.no_pdam NOT IN (
-        SELECT no_pdam 
-        FROM spd_rekening f 
-        WHERE f.subsidi != 0 
-          AND f.FLAG = '0'
-    );`,
-    batal: `SELECT a.*, b.*,
+    AND x.no_pdam IS NULL;`,
+        batal: `${tmpSetup}
+-- [3. Kueri Utama Rencana Pembatalan YKK]
+SELECT 
+    a.NO_PDAM, 
+    b.NAMA, 
+    a.PERIODE, 
+    a.LOKBAY_ID, 
+    a.STGOL_ID, 
+    a.RK, 
+    a.NON_AIR,
     CASE
         WHEN a.STATUS != 'a' THEN CONCAT('Status ', UPPER(a.STATUS))
         WHEN LOWER(b.NAMA) LIKE '%rumdis%' THEN 'Rumdis'
         WHEN LOWER(b.NAMA) LIKE '%rumdin%' THEN 'Rumdin'
         WHEN LOWER(b.NAMA) LIKE '%rusus%' THEN 'Rusus'
-        WHEN a.no_pdam IN (
-            SELECT no_pdam FROM spd_tunggak c 
-            WHERE (c.IS_DELETE = 0 AND c.IS_YKK = 0 AND c.LUNAS = 0) OR (c.IS_DELETE = 0 AND c.IS_YKK = 1 AND c.PH = 'P')
-        ) THEN 'Tunggakan'
-        WHEN a.no_pdam IN (
-            SELECT no_pdam FROM spd_bon d 
-            WHERE d.TANGGAL LIKE '${tanggal}-%' AND d.IS_DELETE = '0' AND d.STPLYN_ID LIKE 't%' AND d.LUNAS = '0'
-        ) THEN 'Penertiban'
-        WHEN a.no_pdam IN (
-            SELECT no_pdam FROM spd_realmohon e 
-            WHERE e.TANGGAL LIKE '${tanggal}%' AND e.STPLYN_ID LIKE 't%'
-        ) THEN 'Realisasi'
-        WHEN a.no_pdam IN (
-            SELECT no_pdam FROM spd_rekening f 
-            WHERE f.subsidi != 0 AND f.FLAG = '0'
-        ) THEN 'Subsidi'
+        WHEN x.alasan IS NOT NULL THEN x.alasan
         ELSE 'Lainnya'
     END AS ALASAN
 FROM spd_rekening a 
 JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+LEFT JOIN tmp_eliminasi x ON x.no_pdam = a.no_pdam
 WHERE 
-    -- 1. Kriteria Data Utama (Harus Terpenuhi)
     a.PERIODE = '${periode}' 
     AND a.STATUS != 'l' 
     AND a.FLAG = '0' 
     AND a.LOKBAY_ID IN ('KB', 'KM', 'KS', 'L') 
     AND a.STGOL_ID IN ('IIA1','IIA2','IIA3','IIIA','IIIB','IVA','IVB')
-
-    -- 2. Data tereliminasi jika memenuhi SALAH SATU dari kondisi di bawah ini:
     AND (
-        -- Status bukan Aktif
         a.STATUS != 'a'
-        
-        -- ATAU Terkena filter Nama (rumdis, rumdin, rusus)
         OR (b.nama LIKE '%rumdis%' OR b.nama LIKE '%rumdin%' OR b.nama LIKE '%rusus%')
-        
-        -- ATAU Terkena filter Data Tunggakan
-        OR a.no_pdam IN (
-            SELECT no_pdam 
-            FROM spd_tunggak c 
-            WHERE (c.IS_DELETE = 0 AND c.IS_YKK = 0 AND c.LUNAS = 0)
-               OR (c.IS_DELETE = 0 AND c.IS_YKK = 1 AND c.PH = 'P')
-        )
-        
-        -- ATAU Terkena filter Data Penertiban
-        OR a.no_pdam IN (
-            SELECT no_pdam 
-            FROM spd_bon d 
-            WHERE d.TANGGAL LIKE '${tanggal}-%' 
-              AND d.IS_DELETE = '0' 
-              AND d.STPLYN_ID LIKE 't%' 
-              AND d.LUNAS = '0'
-        )
-        
-        -- ATAU Terkena filter Data Realisasi
-        OR a.no_pdam IN (
-            SELECT no_pdam 
-            FROM spd_realmohon e 
-            WHERE e.TANGGAL LIKE '${tanggal}%' 
-              AND e.STPLYN_ID LIKE 't%'
-        )
-        
-        -- ATAU Terkena filter Data Subsidi
-        OR a.no_pdam IN (
-            SELECT no_pdam 
-            FROM spd_rekening f 
-            WHERE f.subsidi != 0 
-              AND f.FLAG = '0'
-        )
+        OR x.no_pdam IS NOT NULL
     );`
     };
 };
