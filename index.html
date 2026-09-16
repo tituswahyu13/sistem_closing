@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rencana Beli YKK - Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link rel="stylesheet" href="styles.css?v=4">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-box">
+                    <i class="ph ph-drop-half-bottom"></i>
+                </div>
+                <h2>YKK System</h2>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-tab="beli">
+                    <i class="ph ph-shopping-cart"></i>
+                    <span>Rencana Beli YKK</span>
+                </button>
+                <button class="nav-item" data-tab="batal">
+                    <i class="ph ph-x-circle"></i>
+                    <span>Rencana Pembatalan YKK</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="avatar">A</div>
+                    <div class="details">
+                        <span class="name">Admin User</span>
+                        <span class="role">System Administrator</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="topbar">
+                <h1 id="page-title">Rencana Beli YKK</h1>
+                <div class="topbar-actions">
+                    <div class="date-picker-group">
+                        <div class="date-picker-box" title="Pilih Tanggal">
+                            <i class="ph ph-calendar"></i>
+                            <input type="date" id="date-picker" class="date-picker-input">
+                        </div>
+                        <span id="periode-badge" class="periode-badge" title="Periode Rekening Terhitung">
+                            <i class="ph ph-tag"></i>
+                            <span id="periode-label">Periode: <strong id="periode-code">...</strong></span>
+                        </span>
+                    </div>
+                    <div class="search-box">
+                        <i class="ph ph-magnifying-glass"></i>
+                        <input type="text" id="search-input" placeholder="Cari pelanggan...">
+                    </div>
+                    <button class="icon-btn" title="Refresh Data">
+                        <i class="ph ph-arrows-clockwise"></i>
+                    </button>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                <!-- Stats Row -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa;">
+                            <i class="ph ph-users"></i>
+                        </div>
+                        <div class="stat-details">
+                            <span class="stat-label">Total Pelanggan</span>
+                            <h3 class="stat-value" id="stat-total">0</h3>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="stat-card-jumlah">
+                        <div class="stat-icon" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">
+                            <i class="ph ph-money"></i>
+                        </div>
+                        <div class="stat-details">
+                            <span class="stat-label">Total Jumlah (Rp)</span>
+                            <h3 class="stat-value" id="stat-total-jumlah">Rp 0</h3>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="stat-card-alasan" style="display: none;">
+                        <div class="stat-icon" style="background: rgba(239, 68, 68, 0.2); color: #f87171;">
+                            <i class="ph ph-warning-circle"></i>
+                        </div>
+                        <div class="stat-details">
+                            <span class="stat-label">Total Tunggakan</span>
+                            <h3 class="stat-value" id="stat-tunggakan">0</h3>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Table Section -->
+                <div class="glass-panel table-container">
+                    <div id="table-progress-bar" class="table-progress-bar" style="display: none;"></div>
+                    <div class="panel-header">
+                        <h2>Data Pelanggan</h2>
+                        <div class="panel-actions">
+                            <button class="btn btn-primary btn-sm" id="btn-load-data">
+                                <i class="ph ph-database"></i> Tampilkan Data
+                            </button>
+                            <button class="btn btn-secondary btn-sm" id="btn-export">
+                                <i class="ph ph-download-simple"></i> Export
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr id="table-head-row">
+                                    <th>NO PDAM</th>
+                                    <th>NAMA PELANGGAN</th>
+                                    <th>PERIODE</th>
+                                    <th>LOKASI BAYAR</th>
+                                    <th>GOLONGAN</th>
+                                    <th id="th-alasan" style="display: none;">ALASAN</th>
+                                    <th>RK</th>
+                                    <th>NON AIR</th>
+                                    <th>JUMLAH</th>
+                                    <th>AKSI</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body">
+                                <!-- Data will be populated via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="pagination">
+                        <span class="page-info">Menampilkan <span id="page-count">0</span> data</span>
+                        <div class="page-controls">
+                            <button class="icon-btn" disabled><i class="ph ph-caret-left"></i></button>
+                            <button class="icon-btn" disabled><i class="ph ph-caret-right"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SQL Query Reference -->
+                <div class="glass-panel query-container mt-4">
+                    <div class="panel-header">
+                        <h2>
+                            <i class="ph ph-code"></i> Referensi SQL Query
+                        </h2>
+                        <button class="icon-btn btn-toggle" id="btn-toggle-query">
+                            <i class="ph ph-caret-down"></i>
+                        </button>
+                    </div>
+                    <div class="query-content" id="query-content" style="display: none;">
+                        <pre><code id="sql-code"></code></pre>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js?v=4"></script>
+</body>
+</html>
