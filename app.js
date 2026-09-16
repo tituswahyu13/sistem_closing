@@ -278,7 +278,14 @@ async function fetchData(type) {
     
     try {
         const response = await fetch(`${API_BASE_URL}?action=${type}&periode=${periode}`);
-        const data = await response.json();
+        const text = await response.text();
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (parseErr) {
+            const cleanErr = text.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
+            throw new Error(cleanErr || 'Server mengembalikan respon tidak valid.');
+        }
         if (!response.ok || (data && data.error)) {
             throw new Error((data && data.error) ? data.error : `HTTP ${response.status} ${response.statusText}`);
         }
@@ -508,4 +515,47 @@ btnExport.addEventListener('click', () => {
 });
 
 // Init
-switchTab('beli');
+const urlParams = new URLSearchParams(window.location.search);
+const paramTab = urlParams.get('tab');
+const paramDate = urlParams.get('date');
+const autoLoad = urlParams.get('autoload');
+
+if (paramTab && (paramTab === 'beli' || paramTab === 'batal')) {
+    switchTab(paramTab);
+} else {
+    switchTab('beli');
+}
+
+if (paramDate) {
+    datePicker.value = paramDate;
+    updatePeriodeUI();
+}
+
+const testLoading = urlParams.get('testloading');
+if (testLoading === '1') {
+    const progressBar = document.getElementById('table-progress-bar');
+    if (progressBar) progressBar.style.display = 'block';
+    tableBody.innerHTML = `
+        <tr>
+            <td colspan="10">
+                <div class="loading-container">
+                    <div class="loading-spinner-wrapper">
+                        <div class="loading-ring"></div>
+                        <div class="loading-ring-inner"></div>
+                        <i class="ph ph-database"></i>
+                    </div>
+                    <div class="loading-title">Sedang Mengambil Data dari Database...</div>
+                    <div class="loading-subtitle">Menyaring jutaan data rekening, pengecekan tunggakan, penertiban & realisasi untuk periode terpilih.</div>
+                    <div class="loading-skeleton-bar"></div>
+                </div>
+            </td>
+        </tr>
+    `;
+    btnLoadData.disabled = true;
+    btnLoadData.classList.add('btn-loading');
+    btnLoadData.innerHTML = '<i class="ph ph-spinner spinner"></i> Memuat Data...';
+} else if (autoLoad === '1') {
+    setTimeout(() => {
+        fetchData(currentTab);
+    }, 300);
+}
