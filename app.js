@@ -1,5 +1,5 @@
-// URL Backend
-const API_BASE_URL = 'http://localhost:3000';
+// URL Backend (gunakan relative path agar fleksibel di root maupun subfolder seperti /ykk/)
+const API_BASE_URL = 'api.php';
 
 const getTanggalLike = (periode) => {
     let year = parseInt(periode.substring(0, 4));
@@ -209,6 +209,9 @@ function updatePeriodeUI() {
     }
 }
 
+let currentTab = 'beli';
+let currentData = []; // Store the data globally for search and export
+
 // Inisialisasi default date picker ke tanggal hari ini
 const today = new Date();
 const yyyy = today.getFullYear();
@@ -217,9 +220,6 @@ const dd = String(today.getDate()).padStart(2, '0');
 datePicker.value = `${yyyy}-${mm}-${dd}`;
 
 updatePeriodeUI();
-
-let currentTab = 'beli';
-let currentData = []; // Store the data globally for search and export
 
 // Helper to render badge based on ALASAN
 function getAlasanBadge(alasan) {
@@ -277,17 +277,17 @@ async function fetchData(type) {
     const periode = getSelectedPeriode();
     
     try {
-        const response = await fetch(`${API_BASE_URL}/api.php?action=${type}&periode=${periode}`);
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
+        const response = await fetch(`${API_BASE_URL}?action=${type}&periode=${periode}`);
         const data = await response.json();
+        if (!response.ok || (data && data.error)) {
+            throw new Error((data && data.error) ? data.error : `HTTP ${response.status} ${response.statusText}`);
+        }
         currentData = data;
         searchInput.value = ''; // Reset search field
         renderTable(data, type);
     } catch (error) {
         console.error('Error fetching data:', error);
-        tableBody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 2.5rem; color: #ef4444;"><i class="ph ph-warning-circle" style="font-size: 1.5rem; display: block; margin-bottom: 0.5rem;"></i>Gagal mengambil data dari server. Pastikan backend berjalan.</td></tr>';
+        tableBody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 2.5rem; color: #ef4444;"><i class="ph ph-warning-circle" style="font-size: 1.5rem; display: block; margin-bottom: 0.5rem;"></i>Gagal mengambil data dari server.<br><small style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.25rem; display: inline-block;">${error.message || 'Pastikan backend dan koneksi database berjalan.'}</small></td></tr>`;
         
         // Reset stats
         statTotal.textContent = '0';

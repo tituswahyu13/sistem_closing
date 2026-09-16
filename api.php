@@ -7,7 +7,8 @@ set_time_limit(180);
 ini_set('memory_limit', '512M');
 
 // Simple .env parser
-$env = parse_ini_file('.env');
+$envFile = __DIR__ . '/.env';
+$env = file_exists($envFile) ? parse_ini_file($envFile) : [];
 $host = isset($env['DB_HOST']) ? $env['DB_HOST'] : '192.168.8.11';
 $db   = isset($env['DB_NAME']) ? $env['DB_NAME'] : 'simpadu';
 $user = isset($env['DB_USER']) ? $env['DB_USER'] : 'root';
