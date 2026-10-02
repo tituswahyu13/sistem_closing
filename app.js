@@ -1408,7 +1408,11 @@ async function checkAndRenderRestoreStatus() {
                 const s = String(json.elapsed_seconds % 60).padStart(2, '0');
                 if (timerEl) timerEl.innerHTML = `<i class="ph ph-timer"></i> ${m}:${s}`;
 
-                if (phaseTitle) phaseTitle.innerHTML = `<span class="pipeline-radar-pulse" style="background: #ef4444; box-shadow: 0 0 10px #ef4444;"></span> Pemulihan Database: <span style="color: #fff; font-family: monospace;">${json.source_file || 'simpadu'}</span>`;
+                const pctVal = json.percent !== undefined ? json.percent : 85;
+                const pctStr = `${pctVal}%`;
+                const tablesInfo = json.imported_tables ? `${json.imported_tables}/${json.total_tables || 89} Tabel` : '';
+
+                if (phaseTitle) phaseTitle.innerHTML = `<span class="pipeline-radar-pulse" style="background: #ef4444; box-shadow: 0 0 10px #ef4444;"></span> Pemulihan Database: <span style="color: #fff; font-family: monospace;">${json.source_file || 'simpadu'}</span> <small style="color: #fca5a5; font-weight: normal;">(${tablesInfo ? tablesInfo + ' - ' : ''}${pctStr})</small>`;
                 
                 // Step 1: Safety Snapshot
                 if (json.has_safety_snapshot) {
@@ -1425,24 +1429,28 @@ async function checkAndRenderRestoreStatus() {
                 }
 
                 // Step 3: Impor MySQL
-                if (json.active_table) {
-                    updatePageRestoreStepUI(3, 'RUNNING', `Tabel: ${json.active_table}`);
+                if (json.active_table || json.imported_tables > 0) {
+                    updatePageRestoreStepUI(3, 'RUNNING', tablesInfo || `Tabel: ${json.active_table}`);
                     const desc3 = document.getElementById('page-restore-desc-3');
-                    if (desc3) desc3.innerHTML = `Mengisi tabel <code>${json.active_table}</code>`;
+                    if (desc3) desc3.innerHTML = json.active_table ? `Mengisi tabel <code>${json.active_table}</code> (${tablesInfo})` : `Mengimpor struktur & data (${tablesInfo})`;
                 } else {
                     updatePageRestoreStepUI(3, 'RUNNING', 'Memproses...');
                 }
 
                 // Step 4: Finalisasi
-                updatePageRestoreStepUI(4, 'STANDBY', 'Menunggu');
+                if (pctVal >= 100 || json.is_finished) {
+                    updatePageRestoreStepUI(4, 'SUCCESS', 'Selesai');
+                } else {
+                    updatePageRestoreStepUI(4, 'STANDBY', 'Menunggu');
+                }
 
                 if (tableBadge) {
                     tableBadge.className = 'badge badge-info';
-                    tableBadge.textContent = json.active_table ? `Tabel: ${json.active_table}` : 'Memproses...';
+                    tableBadge.textContent = json.active_table ? `Tabel: ${json.active_table} (${tablesInfo})` : (tablesInfo || 'Memproses...');
                 }
 
-                if (pctEl) { pctEl.textContent = '85%'; pctEl.style.color = '#fca5a5'; }
-                if (barEl) { barEl.style.width = '85%'; barEl.style.background = 'linear-gradient(90deg, #f97316, #ef4444, #ec4899)'; }
+                if (pctEl) { pctEl.textContent = pctStr; pctEl.style.color = '#fca5a5'; }
+                if (barEl) { barEl.style.width = pctStr; barEl.style.background = 'linear-gradient(90deg, #f97316, #ef4444, #ec4899)'; }
 
                 if (tickerEl && json.query_snippet) {
                     tickerEl.textContent = `[${json.timestamp || ''}] ${json.query_snippet}`;
@@ -1556,7 +1564,7 @@ function stopBackupTabAutoPoller() {
 async function loadBackupData() {
     if (!backupTableBody) return;
     try {
-        backupTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-secondary);"><i class="ph ph-spinner spinner"></i> Memuat berkas cadangan...</td></tr>';
+        backupTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-secondary);"><i class="ph ph-spinner spinner"></i> Memuat berkas cadangan...</td></tr>';
         const res = await fetch('api.php?action=get_backups');
         const json = await res.json();
         if (json.status === 'success' && json.data) {
@@ -1567,7 +1575,7 @@ async function loadBackupData() {
             if (backupLogConsole) backupLogConsole.textContent = d.log || 'Belum ada catatan log aktivitas.';
 
             if (!d.files || d.files.length === 0) {
-                backupTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-secondary);">Belum ada berkas cadangan di direktori backups. Silakan klik "Cadangkan Sekarang".</td></tr>';
+                backupTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-secondary);">Belum ada berkas cadangan di direktori backups. Silakan klik "Cadangkan Sekarang".</td></tr>';
                 return;
             }
 

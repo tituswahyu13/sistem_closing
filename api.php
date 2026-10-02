@@ -782,12 +782,39 @@ if ($action === 'beli' || $action === 'batal') {
 
         $elapsedSeconds = $startTime ? (time() - strtotime($startTime)) : 0;
         
+        // Hitung estimasi persentase progres dinamis impor database (0% - 100%)
+        $dynamicPercent = 0;
+        $importedTablesCount = 0;
+        $totalEstimatedTables = 89;
+
+        try {
+            $stmtTb = $pdo->prepare("SELECT COUNT(*) AS total FROM information_schema.TABLES WHERE TABLE_SCHEMA = :targetDb");
+            $stmtTb->execute(['targetDb' => $targetDbName]);
+            $tbRow = $stmtTb->fetch(PDO::FETCH_ASSOC);
+            $importedTablesCount = intval($tbRow['total'] ?? 0);
+        } catch (Exception $e) {
+            $importedTablesCount = 0;
+        }
+
+        if ($hasSafetySnapshot) {
+            // Safety snapshot selesai (25%) + progres impor tabel (25% s/d 95%)
+            $tableProgress = min(70, round(($importedTablesCount / $totalEstimatedTables) * 70));
+            $dynamicPercent = min(98, 25 + $tableProgress);
+            if ($dynamicPercent < 30) $dynamicPercent = 30;
+        } else {
+            // Masih dalam tahap safety snapshot (0% s/d 25%)
+            $dynamicPercent = min(25, max(5, round(($elapsedSeconds / 300) * 25)));
+        }
+
         // Jika proses OS masih hidup, maka PASTI AKTIF dan BELUM FINISHED
         if ($isRestoreProcessAlive) {
             $isReallyActive = true;
             $isFinished = false;
         } else {
             $isReallyActive = !empty($activeQuery) && $elapsedSeconds < 7200;
+            if (!$isReallyActive && $isFinished) {
+                $dynamicPercent = 100;
+            }
         }
 
         echo json_encode([
@@ -795,6 +822,9 @@ if ($action === 'beli' || $action === 'batal') {
             "is_active" => $isReallyActive,
             "is_finished" => $isFinished,
             "finish_duration" => $finishDuration,
+            "percent" => $dynamicPercent,
+            "imported_tables" => $importedTablesCount,
+            "total_tables" => $totalEstimatedTables,
             "source_file" => $sourceFile,
             "target_db" => $targetDbName,
             "start_time" => $startTime,
