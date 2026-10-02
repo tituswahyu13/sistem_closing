@@ -604,8 +604,25 @@ if ($action === 'beli' || $action === 'batal') {
             }
         }
 
+        // Cek apakah proses backup di tingkat OS sedang berjalan aktif
+        $backupPidFile = $backupDir . '/.backup.pid';
+        $isBackupProcessAlive = false;
+        if (file_exists($backupPidFile)) {
+            $pid = intval(trim(file_get_contents($backupPidFile)));
+            if ($pid > 0) {
+                $isBackupProcessAlive = function_exists('posix_kill') ? @posix_kill($pid, 0) : true;
+            }
+        }
+        if (!$isBackupProcessAlive) {
+            exec("pgrep -f 'backup_simpadu.php|mysqldump' 2>/dev/null", $pgOut, $pgCode);
+            $isBackupProcessAlive = ($pgCode === 0 && !empty($pgOut));
+        }
+
         $elapsedSeconds = $startTime ? (time() - strtotime($startTime)) : 0;
-        $isReallyActive = !empty($activeQuery) || $isWriting || (!$isFinished && $elapsedSeconds > 0 && $elapsedSeconds < 1800);
+        $isReallyActive = $isBackupProcessAlive || $isWriting || (!empty($activeQuery) && $elapsedSeconds < 7200);
+        if ($isBackupProcessAlive) {
+            $isFinished = false;
+        }
 
         echo json_encode([
             "status" => "success",
@@ -749,16 +766,29 @@ if ($action === 'beli' || $action === 'batal') {
             }
         }
 
-        $elapsedSeconds = $startTime ? (time() - strtotime($startTime)) : 0;
-        if (!$activeQuery && !empty($startTime) && !$isFinished) {
-            $isFinished = true;
-            $finishDuration = $elapsedSeconds;
-            $succLine = "[" . date('Y-m-d H:i:s') . "] SUCCESS: Pemulihan database '$targetDbName' berhasil selesai dalam $finishDuration detik.";
-            file_put_contents($logFile, $succLine . "\n", FILE_APPEND);
-            $lastLog = $succLine;
+        // Cek status proses restore pada level sistem operasi (OS)
+        $restorePidFile = __DIR__ . '/backups/.restore.pid';
+        $isRestoreProcessAlive = false;
+        if (file_exists($restorePidFile)) {
+            $pid = intval(trim(file_get_contents($restorePidFile)));
+            if ($pid > 0) {
+                $isRestoreProcessAlive = function_exists('posix_kill') ? @posix_kill($pid, 0) : true;
+            }
+        }
+        if (!$isRestoreProcessAlive) {
+            exec("pgrep -f 'restore_simpadu.php|gunzip.*mysql' 2>/dev/null", $pgOut, $pgCode);
+            $isRestoreProcessAlive = ($pgCode === 0 && !empty($pgOut));
         }
 
-        $isReallyActive = !empty($activeQuery);
+        $elapsedSeconds = $startTime ? (time() - strtotime($startTime)) : 0;
+        
+        // Jika proses OS masih hidup, maka PASTI AKTIF dan BELUM FINISHED
+        if ($isRestoreProcessAlive) {
+            $isReallyActive = true;
+            $isFinished = false;
+        } else {
+            $isReallyActive = !empty($activeQuery) && $elapsedSeconds < 7200;
+        }
 
         echo json_encode([
             "status" => "success",

@@ -18,6 +18,11 @@ function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
     if (!is_dir($backupDir)) {
         mkdir($backupDir, 0755, true);
     }
+    $pidFile = "{$backupDir}/.backup.pid";
+    file_put_contents($pidFile, getmypid());
+    register_shutdown_function(function() use ($pidFile) {
+        if (file_exists($pidFile)) @unlink($pidFile);
+    });
 
     // Deteksi periode aktif database sesuai tipe closing
     $activePeriode = date('Ym');

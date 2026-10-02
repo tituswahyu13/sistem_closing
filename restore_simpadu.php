@@ -17,6 +17,14 @@ $port = !empty($env['PORT']) ? $env['PORT'] : '3306';
 
 $backupDir = __DIR__ . '/backups';
 $logFile = "{$backupDir}/restore.log";
+$pidFile = "{$backupDir}/.restore.pid";
+
+// Catat PID aktif dan bersihkan saat skrip selesai
+if (!is_dir($backupDir)) mkdir($backupDir, 0755, true);
+file_put_contents($pidFile, getmypid());
+register_shutdown_function(function() use ($pidFile) {
+    if (file_exists($pidFile)) @unlink($pidFile);
+});
 
 function writeRestoreLog($msg, $logFile) {
     $now = date('Y-m-d H:i:s');
