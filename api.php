@@ -525,15 +525,19 @@ if ($action === 'beli' || $action === 'batal') {
         $activeTable = null;
         $querySnippet = null;
 
-        // Cek SHOW FULL PROCESSLIST di server MySQL untuk query mysqldump / backup
+        // Cek SHOW FULL PROCESSLIST di server MySQL untuk query mysqldump / backup saja (hindari query restore INSERT/CREATE)
         $stmt = $pdo->query("SHOW FULL PROCESSLIST");
         $processes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         foreach ($processes as $p) {
             $info = trim($p['Info'] ?? '');
-            $db = $p['db'] ?? '';
-            if (!empty($info) && ($db === 'simpadu' || stripos($info, 'SQL_NO_CACHE') !== false || stripos($info, 'SELECT') !== false || stripos($info, 'SHOW CREATE TABLE') !== false)) {
-                if (stripos($info, 'SHOW FULL PROCESSLIST') === false && stripos($info, 'ykk_config') === false) {
+            if (!empty($info) && stripos($info, 'SHOW FULL PROCESSLIST') === false && stripos($info, 'ykk_config') === false) {
+                // Hanya tangkap query pembacaan mysqldump (SQL_NO_CACHE / SELECT / LOCK TABLES / SHOW CREATE TABLE)
+                // Abaikan query penulisan restore (INSERT INTO, CREATE TABLE, ALTER TABLE, DROP TABLE)
+                $isRestoreQuery = stripos($info, 'INSERT INTO') !== false || stripos($info, 'CREATE TABLE') !== false || stripos($info, 'DROP TABLE') !== false || stripos($info, 'ALTER TABLE') !== false;
+                $isDumpQuery = stripos($info, 'SQL_NO_CACHE') !== false || stripos($info, 'LOCK TABLES') !== false || stripos($info, 'SHOW CREATE TABLE') !== false || (stripos($info, 'SELECT') !== false && stripos($info, 'SELECT /*!') !== false);
+
+                if ($isDumpQuery && !$isRestoreQuery) {
                     if (preg_match('/(?:FROM|TABLE)\s+[`\'"]?([a-zA-Z0-9_]+)[`\'"]?/i', $info, $matches)) {
                         $activeTable = $matches[1];
                     }
