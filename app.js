@@ -708,7 +708,7 @@ function switchTab(tabId) {
         stopPipelineTabAutoPoller();
         stopBackupTabAutoPoller();
     } else if (tabId === 'pipeline' || tabId === 'otomasi') {
-        pageTitle.textContent = 'Master Pipeline & Otomasi (6-Tahapan)';
+        pageTitle.textContent = 'Master Closing Pipeline (6-Tahap Otomasi)';
         budgetPanel.style.display = 'none';
         statsGrid.style.display = 'none';
         if (tableContainer) tableContainer.style.display = 'none';
