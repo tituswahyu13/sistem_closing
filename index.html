@@ -806,6 +806,70 @@
                 </div>
             </div>
 
+            <!-- Modal Buat Cadangan Database Baru -->
+            <div class="modal-overlay" id="modal-backup" style="display: none; position: fixed; inset: 0; background: rgba(5, 8, 16, 0.85); backdrop-filter: blur(8px); z-index: 1000; align-items: center; justify-content: center;">
+                <div class="glass-panel modal-card" style="width: 100%; max-width: 520px; padding: 1.75rem; border: 1px solid rgba(99, 102, 241, 0.3); box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
+                    <div class="panel-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.75rem; margin-bottom: 1.25rem;">
+                        <h2 style="color: #818cf8; font-size: 1.25rem;"><i class="ph ph-archive"></i> Buat Cadangan Database</h2>
+                        <button class="icon-btn" id="btn-close-backup-modal" type="button"><i class="ph ph-x"></i></button>
+                    </div>
+
+                    <form id="form-create-backup">
+                        <!-- Pilihan Kategori Closing -->
+                        <div style="margin-bottom: 1.25rem;">
+                            <label style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 6px; display: block;">Pilih Kategori Pencadangan:</label>
+                            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                <label style="display: flex; align-items: center; gap: 0.65rem; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); padding: 0.65rem 0.85rem; border-radius: 6px; cursor: pointer;">
+                                    <input type="radio" name="backup_type" value="MANUAL" checked style="accent-color: var(--primary);">
+                                    <div>
+                                        <strong style="color: #fff; font-size: 0.85rem;">Manual Snapshot</strong>
+                                        <span style="display: block; font-size: 0.75rem; color: var(--text-secondary);">Pencadangan rutin manual / sebelum pembaruan sistem</span>
+                                    </div>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.65rem; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); padding: 0.65rem 0.85rem; border-radius: 6px; cursor: pointer;">
+                                    <input type="radio" name="backup_type" value="CLOSING_TAGIHAN" style="accent-color: var(--primary);">
+                                    <div>
+                                        <strong style="color: #f59e0b; font-size: 0.85rem;">Closing Tagihan (Tanggal 21)</strong>
+                                        <span style="display: block; font-size: 0.75rem; color: var(--text-secondary);">Periode aktif diambil dari <code>spd_tutuptagihan</code></span>
+                                    </div>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.65rem; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); padding: 0.65rem 0.85rem; border-radius: 6px; cursor: pointer;">
+                                    <input type="radio" name="backup_type" value="CLOSING_REKENING" style="accent-color: var(--primary);">
+                                    <div>
+                                        <strong style="color: #818cf8; font-size: 0.85rem;">Closing Rekening (Tanggal 1)</strong>
+                                        <span style="display: block; font-size: 0.75rem; color: var(--text-secondary);">Periode aktif diambil dari <code>spd_periode</code></span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Catatan / Label Kustom -->
+                        <div style="margin-bottom: 1.25rem;">
+                            <label for="backup-custom-label" style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; display: block;">
+                                Catatan / Label Kustom (Opsional):
+                            </label>
+                            <input type="text" id="backup-custom-label" placeholder="Contoh: sebelum_migrasi / uji_coba_tarif" style="width: 100%; padding: 0.55rem 0.75rem; font-size: 0.9rem; border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff;">
+                            <small style="color: var(--text-secondary); font-size: 0.72rem; display: block; margin-top: 3px;">Hanya huruf, angka, dan garis bawah (otomatis disanitasi).</small>
+                        </div>
+
+                        <!-- Preview Nama Berkas -->
+                        <div style="margin-bottom: 1.5rem;">
+                            <label style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 4px; display: block;">Pratinjau Format Nama Berkas:</label>
+                            <div style="background: #020617; border: 1px solid rgba(99,102,241,0.25); padding: 0.6rem 0.85rem; border-radius: 6px; font-family: monospace; font-size: 0.78rem; color: #a5b4fc; word-break: break-all;" id="backup-filename-preview">
+                                simpadu_MANUAL_p202609_20261002_xxxxxx.sql.gz
+                            </div>
+                        </div>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+                            <button type="button" class="btn btn-secondary" id="btn-cancel-backup-modal">Batal</button>
+                            <button type="submit" class="btn btn-primary" id="btn-confirm-start-backup">
+                                <i class="ph ph-play"></i> Mulai Pencadangan
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <!-- Modal Konfirmasi Restore Database -->
             <div class="modal-overlay" id="modal-restore" style="display: none; position: fixed; inset: 0; background: rgba(5, 8, 16, 0.85); backdrop-filter: blur(8px); z-index: 1000; align-items: center; justify-content: center;">
                 <div class="glass-panel modal-card" style="width: 100%; max-width: 520px; padding: 1.75rem; border: 1px solid rgba(239, 68, 68, 0.3); box-shadow: 0 20px 40px rgba(0,0,0,0.6);">

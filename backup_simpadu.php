@@ -5,7 +5,7 @@
 
 date_default_timezone_set('Asia/Jakarta');
 
-function executeBackup() {
+function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
     $envFile = __DIR__ . '/.env';
     $env = file_exists($envFile) ? parse_ini_file($envFile) : [];
     $host = !empty($env['DB_HOST']) ? $env['DB_HOST'] : '192.168.0.10';
@@ -19,14 +19,33 @@ function executeBackup() {
         mkdir($backupDir, 0755, true);
     }
 
-    // Deteksi periode aktif database saat ini
+    // Deteksi periode aktif database sesuai tipe closing
     $activePeriode = date('Ym');
+    $normalizedType = strtoupper($backupType);
+    if (str_contains($normalizedType, 'REKENING')) {
+        $normalizedType = 'CLOSING_REKENING';
+    } elseif (str_contains($normalizedType, 'TAGIHAN')) {
+        $normalizedType = 'CLOSING_TAGIHAN';
+    } else {
+        $normalizedType = 'MANUAL';
+    }
+
     try {
         $dsn = "mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4";
         $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-        $row = $pdo->query("SELECT PERIODE FROM spd_tutuptagihan WHERE IS_TUTUP = 0 LIMIT 1")->fetch(PDO::FETCH_ASSOC);
-        if (!empty($row['PERIODE'])) {
-            $activePeriode = $row['PERIODE'];
+        
+        if ($normalizedType === 'CLOSING_REKENING') {
+            // Ambil dari spd_periode (Closing Rekening tgl 1)
+            $row = $pdo->query("SELECT CONCAT(TAHUN, BULAN) AS PERIODE FROM spd_periode WHERE IS_TUTUP = 0 ORDER BY ID DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+            if (!empty($row['PERIODE'])) {
+                $activePeriode = $row['PERIODE'];
+            }
+        } else {
+            // Ambil dari spd_tutuptagihan (Closing Tagihan tgl 21 / Manual)
+            $row = $pdo->query("SELECT PERIODE FROM spd_tutuptagihan WHERE IS_TUTUP = 0 ORDER BY ID DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+            if (!empty($row['PERIODE'])) {
+                $activePeriode = $row['PERIODE'];
+            }
         }
     } catch (Exception $e) {
         // Fallback default
@@ -34,7 +53,18 @@ function executeBackup() {
 
     $retentionDays = 14;
     $timestamp = date('Ymd_His');
-    $backupFile = "{$backupDir}/{$db}_p{$activePeriode}_{$timestamp}.sql.gz";
+    
+    // Sanitasi label kustom user jika ada
+    $labelPart = '';
+    if (!empty($customLabel)) {
+        $cleanLabel = preg_replace('/[^a-zA-Z0-9_-]/', '_', trim($customLabel));
+        $cleanLabel = substr(trim($cleanLabel, '_'), 0, 30);
+        if (!empty($cleanLabel)) {
+            $labelPart = "_{$cleanLabel}";
+        }
+    }
+
+    $backupFile = "{$backupDir}/{$db}_{$normalizedType}{$labelPart}_p{$activePeriode}_{$timestamp}.sql.gz";
     $logFile = "{$backupDir}/backup.log";
 
     $writeLog = function($msg) use ($logFile) {
@@ -44,7 +74,7 @@ function executeBackup() {
     };
 
     $writeLog("========================================================");
-    $writeLog("Memulai proses backup database '{$db}' (Periode Aktif: {$activePeriode})...");
+    $writeLog("Memulai proses backup database '{$db}' (Tipe: {$normalizedType}, Periode: {$activePeriode})...");
     $writeLog("Host: {$host}:{$port} | User: {$user} | Target: {$backupFile}");
 
     // Cari binary mysqldump
@@ -122,7 +152,9 @@ function executeBackup() {
 
 // Jika dieksekusi langsung via CLI / Web
 if (isset($_SERVER['SCRIPT_FILENAME']) && realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILENAME'])) {
-    $res = executeBackup();
+    $typeArg = $argv[1] ?? ($_GET['type'] ?? 'MANUAL');
+    $labelArg = $argv[2] ?? ($_GET['label'] ?? '');
+    $res = executeBackup($typeArg, $labelArg);
     if (php_sapi_name() === 'cli') {
         echo ($res['success'] ? "SUCCESS: " : "FAILED: ") . $res['message'] . PHP_EOL;
         exit($res['success'] ? 0 : 1);

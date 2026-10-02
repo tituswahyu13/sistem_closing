@@ -419,6 +419,27 @@ if ($action === 'beli' || $action === 'batal') {
                     $ageDays = floor(($now - $mtime) / (60 * 60 * 24));
                     $fname = basename($filePath);
 
+                    // Ekstraksi tipe closing dan label
+                    $closingType = 'MANUAL';
+                    $typeBadge = 'Manual Snapshot';
+                    $customNote = '';
+
+                    if (str_contains($fname, 'CLOSING_TAGIHAN')) {
+                        $closingType = 'CLOSING_TAGIHAN';
+                        $typeBadge = 'Closing Tagihan (Tgl 21)';
+                    } elseif (str_contains($fname, 'CLOSING_REKENING')) {
+                        $closingType = 'CLOSING_REKENING';
+                        $typeBadge = 'Closing Rekening (Tgl 1)';
+                    } else {
+                        $closingType = 'MANUAL';
+                        $typeBadge = 'Manual Snapshot';
+                    }
+
+                    // Ekstraksi label kustom (misal: simpadu_MANUAL_sebelum_tarif_p202609_...)
+                    if (preg_match('/(?:MANUAL|CLOSING_TAGIHAN|CLOSING_REKENING)_([a-zA-Z0-9_-]+)_p\d{6}_/', $fname, $mNote)) {
+                        $customNote = str_replace('_', ' ', $mNote[1]);
+                    }
+
                     // Ekstraksi periode database dari nama berkas atau tanggal
                     $filePeriode = '';
                     if (preg_match('/_p(\d{6})_/', $fname, $mP)) {
@@ -435,6 +456,9 @@ if ($action === 'beli' || $action === 'batal') {
 
                     $files[] = [
                         "filename" => $fname,
+                        "type" => $closingType,
+                        "type_label" => $typeBadge,
+                        "custom_note" => $customNote,
                         "periode" => $filePeriode,
                         "periode_label" => $periodeLabel,
                         "size_bytes" => $bytes,
@@ -473,13 +497,22 @@ if ($action === 'beli' || $action === 'batal') {
     }
 } elseif ($action === 'run_backup') {
     try {
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $type = $input['type'] ?? ($_GET['type'] ?? 'MANUAL');
+        $label = $input['label'] ?? ($_GET['label'] ?? '');
+
         $backupScript = __DIR__ . '/backup_simpadu.php';
-        $cmd = sprintf("nohup php %s > /dev/null 2>&1 &", escapeshellarg($backupScript));
+        $cmd = sprintf(
+            "nohup php %s %s %s > /dev/null 2>&1 &",
+            escapeshellarg($backupScript),
+            escapeshellarg($type),
+            escapeshellarg($label)
+        );
         exec($cmd);
 
         echo json_encode([
             "status" => "success",
-            "message" => "Proses pencadangan database 'simpadu' telah dimulai di latar belakang.",
+            "message" => "Proses pencadangan database 'simpadu' ($type) telah dimulai di latar belakang.",
             "is_async" => true
         ]);
     } catch (Exception $e) {

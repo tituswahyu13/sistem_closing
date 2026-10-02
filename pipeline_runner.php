@@ -220,7 +220,7 @@ function executeMasterPipeline($options = []) {
         $t1_start = date('Y-m-d H:i:s');
         recordPipelineStep($pdo, $batchId, $periodeBerjalan, 1, $step1Name, 'RUNNING', $t1_start);
         
-        $backupResult = executeBackup();
+        $backupResult = executeBackup('CLOSING_TAGIHAN');
         if (!$backupResult['success']) {
             throw new Exception("Pencadangan database gagal: " . $backupResult['message']);
         }

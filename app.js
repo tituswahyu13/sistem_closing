@@ -1725,18 +1725,93 @@ backupPresetChips.forEach(chip => {
     });
 });
 
+// =========================================================================
+// Create Backup Modal & Handlers
+// =========================================================================
+
+const modalBackup = document.getElementById('modal-backup');
+const btnCloseBackupModal = document.getElementById('btn-close-backup-modal');
+const btnCancelBackupModal = document.getElementById('btn-cancel-backup-modal');
+const formCreateBackup = document.getElementById('form-create-backup');
+const inputBackupCustomLabel = document.getElementById('backup-custom-label');
+const backupFilenamePreview = document.getElementById('backup-filename-preview');
+
+function updateBackupFilenamePreview() {
+    if (!backupFilenamePreview) return;
+    const selectedTypeEl = document.querySelector('input[name="backup_type"]:checked');
+    const type = selectedTypeEl ? selectedTypeEl.value : 'MANUAL';
+    const labelRaw = inputBackupCustomLabel ? inputBackupCustomLabel.value.trim() : '';
+    
+    let cleanLabel = labelRaw.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/^_+|_+$/g, '').substring(0, 30);
+    const labelPart = cleanLabel ? `_${cleanLabel}` : '';
+    
+    // Perkiraan periode aktif
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const curTimestamp = `${curYear}${curMonth}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+    
+    // Tagihan p-active vs Rekening p-active
+    const periodStr = `${curYear}${curMonth}`;
+    
+    backupFilenamePreview.textContent = `simpadu_${type}${labelPart}_p${periodStr}_${curTimestamp}.sql.gz`;
+}
+
+function openBackupModal() {
+    if (!modalBackup) return;
+    const defaultRadio = document.querySelector('input[name="backup_type"][value="MANUAL"]');
+    if (defaultRadio) defaultRadio.checked = true;
+    if (inputBackupCustomLabel) inputBackupCustomLabel.value = '';
+    updateBackupFilenamePreview();
+    modalBackup.style.display = 'flex';
+}
+
+function closeBackupModal() {
+    if (modalBackup) modalBackup.style.display = 'none';
+}
+
+if (btnCloseBackupModal) btnCloseBackupModal.addEventListener('click', closeBackupModal);
+if (btnCancelBackupModal) btnCancelBackupModal.addEventListener('click', closeBackupModal);
+
+if (modalBackup) {
+    modalBackup.addEventListener('click', (e) => {
+        if (e.target === modalBackup) closeBackupModal();
+    });
+}
+
+document.querySelectorAll('input[name="backup_type"]').forEach(radio => {
+    radio.addEventListener('change', updateBackupFilenamePreview);
+});
+if (inputBackupCustomLabel) {
+    inputBackupCustomLabel.addEventListener('input', updateBackupFilenamePreview);
+}
+
 if (btnRunBackupNow) {
-    btnRunBackupNow.addEventListener('click', async () => {
-        if (!confirm('Jalankan proses pencadangan database "simpadu" sekarang?\n\nProses mysqldump dan kompresi gzip akan berjalan di latar belakang server secara non-blocking.')) {
-            return;
-        }
+    btnRunBackupNow.addEventListener('click', () => {
+        openBackupModal();
+    });
+}
+
+if (formCreateBackup) {
+    formCreateBackup.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const selectedTypeEl = document.querySelector('input[name="backup_type"]:checked');
+        const type = selectedTypeEl ? selectedTypeEl.value : 'MANUAL';
+        const label = inputBackupCustomLabel ? inputBackupCustomLabel.value.trim() : '';
+
+        closeBackupModal();
 
         btnRunBackupNow.disabled = true;
         btnRunBackupNow.classList.add('btn-loading');
         btnRunBackupNow.innerHTML = '<i class="ph ph-spinner spinner"></i> Memulai Cadangan...';
 
         try {
-            const res = await fetch('api.php?action=run_backup');
+            const res = await fetch('api.php?action=run_backup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type, label })
+            });
             const json = await res.json();
             if (json.status === 'success') {
                 checkAndRenderBackupStatus();
