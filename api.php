@@ -405,14 +405,38 @@ if ($action === 'beli' || $action === 'batal') {
                     return filemtime($b) - filemtime($a);
                 });
 
+                $bulanIndo = [
+                    '01' => 'Januari', '02' => 'Februari', '03' => 'Maret', '04' => 'April',
+                    '05' => 'Mei', '06' => 'Juni', '07' => 'Juli', '08' => 'Agustus',
+                    '09' => 'September', '10' => 'Oktober', '11' => 'November', '12' => 'Desember'
+                ];
+
                 $now = time();
                 foreach ($rawFiles as $filePath) {
                     $bytes = filesize($filePath);
                     $mtime = filemtime($filePath);
                     $totalBytes += $bytes;
                     $ageDays = floor(($now - $mtime) / (60 * 60 * 24));
+                    $fname = basename($filePath);
+
+                    // Ekstraksi periode database dari nama berkas atau tanggal
+                    $filePeriode = '';
+                    if (preg_match('/_p(\d{6})_/', $fname, $mP)) {
+                        $filePeriode = $mP[1];
+                    } else {
+                        // Perkiraan periode dari tanggal pembuatan berkas (bulan lalu)
+                        $filePeriode = date('Ym', strtotime(date('Y-m-01', $mtime) . ' -1 month'));
+                    }
+
+                    $pYear = substr($filePeriode, 0, 4);
+                    $pMonth = substr($filePeriode, 4, 2);
+                    $monthName = $bulanIndo[$pMonth] ?? $pMonth;
+                    $periodeLabel = "{$filePeriode} ({$monthName} {$pYear})";
+
                     $files[] = [
-                        "filename" => basename($filePath),
+                        "filename" => $fname,
+                        "periode" => $filePeriode,
+                        "periode_label" => $periodeLabel,
                         "size_bytes" => $bytes,
                         "size_formatted" => round($bytes / 1024 / 1024, 2) . ' MB',
                         "created_at" => date('Y-m-d H:i:s', $mtime),

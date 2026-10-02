@@ -1583,6 +1583,11 @@ async function loadBackupData() {
                             <strong>${file.filename}</strong>
                         </div>
                     </td>
+                    <td style="text-align: center;">
+                        <span class="badge badge-primary" style="font-family: monospace; font-size: 0.8rem; background: rgba(99, 102, 241, 0.15); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.35); padding: 0.35rem 0.65rem;">
+                            <i class="ph ph-calendar-check"></i> ${file.periode_label || file.periode}
+                        </span>
+                    </td>
                     <td style="text-align: right;"><span class="badge badge-info">${file.size_formatted}</span></td>
                     <td>${file.created_at}</td>
                     <td>${file.age_days} hari lalu</td>
@@ -1602,7 +1607,7 @@ async function loadBackupData() {
     } catch (e) {
         console.error('Gagal memuat berkas backup:', e);
         if (backupTableBody) {
-            backupTableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 2rem; color: #ef4444;">Gagal memuat data cadangan: ${e.message}</td></tr>`;
+            backupTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 2rem; color: #ef4444;">Gagal memuat data cadangan: ${e.message}</td></tr>`;
         }
     }
 }

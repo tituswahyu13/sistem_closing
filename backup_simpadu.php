@@ -19,9 +19,22 @@ function executeBackup() {
         mkdir($backupDir, 0755, true);
     }
 
+    // Deteksi periode aktif database saat ini
+    $activePeriode = date('Ym');
+    try {
+        $dsn = "mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4";
+        $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        $row = $pdo->query("SELECT PERIODE FROM spd_tutuptagihan WHERE IS_TUTUP = 0 LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        if (!empty($row['PERIODE'])) {
+            $activePeriode = $row['PERIODE'];
+        }
+    } catch (Exception $e) {
+        // Fallback default
+    }
+
     $retentionDays = 14;
     $timestamp = date('Ymd_His');
-    $backupFile = "{$backupDir}/{$db}_{$timestamp}.sql.gz";
+    $backupFile = "{$backupDir}/{$db}_p{$activePeriode}_{$timestamp}.sql.gz";
     $logFile = "{$backupDir}/backup.log";
 
     $writeLog = function($msg) use ($logFile) {
@@ -31,7 +44,7 @@ function executeBackup() {
     };
 
     $writeLog("========================================================");
-    $writeLog("Memulai proses backup database '{$db}'...");
+    $writeLog("Memulai proses backup database '{$db}' (Periode Aktif: {$activePeriode})...");
     $writeLog("Host: {$host}:{$port} | User: {$user} | Target: {$backupFile}");
 
     // Cari binary mysqldump
