@@ -635,14 +635,15 @@ if ($action === 'beli' || $action === 'batal') {
 
         foreach ($processes as $p) {
             $info = trim($p['Info'] ?? '');
-            $db = $p['db'] ?? '';
-            if (!empty($info) && ($db === 'simpadu' || stripos($info, 'INSERT INTO') !== false || stripos($info, 'CREATE TABLE') !== false || stripos($info, 'DROP TABLE') !== false)) {
-                if (preg_match('/(?:INSERT\s+INTO|CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE)\s+[`\'"]?([a-zA-Z0-9_]+)[`\'"]?/i', $info, $matches)) {
-                    $activeTable = $matches[1];
+            if (!empty($info) && stripos($info, 'SHOW FULL PROCESSLIST') === false && stripos($info, 'ykk_config') === false) {
+                if (stripos($info, 'INSERT INTO') !== false || stripos($info, 'CREATE TABLE') !== false || stripos($info, 'DROP TABLE') !== false || stripos($info, 'ALTER TABLE') !== false || stripos($info, 'LOAD DATA') !== false) {
+                    if (preg_match('/(?:INSERT\s+INTO|CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE)\s+[`\'"]?([a-zA-Z0-9_]+)[`\'"]?/i', $info, $matches)) {
+                        $activeTable = $matches[1];
+                    }
+                    $activeQuery = $info;
+                    $querySnippet = substr($info, 0, 140) . (strlen($info) > 140 ? '...' : '');
+                    break;
                 }
-                $activeQuery = $info;
-                $querySnippet = substr($info, 0, 140) . (strlen($info) > 140 ? '...' : '');
-                break;
             }
         }
 
@@ -688,7 +689,15 @@ if ($action === 'beli' || $action === 'batal') {
         }
 
         $elapsedSeconds = $startTime ? (time() - strtotime($startTime)) : 0;
-        $isReallyActive = !empty($activeQuery) || (!$isFinished && $elapsedSeconds > 0 && $elapsedSeconds < 3600);
+        if (!$activeQuery && !empty($startTime) && !$isFinished) {
+            $isFinished = true;
+            $finishDuration = $elapsedSeconds;
+            $succLine = "[" . date('Y-m-d H:i:s') . "] SUCCESS: Pemulihan database '$targetDbName' berhasil selesai dalam $finishDuration detik.";
+            file_put_contents($logFile, $succLine . "\n", FILE_APPEND);
+            $lastLog = $succLine;
+        }
+
+        $isReallyActive = !empty($activeQuery);
 
         echo json_encode([
             "status" => "success",

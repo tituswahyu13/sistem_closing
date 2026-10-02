@@ -1391,7 +1391,7 @@ async function checkAndRenderRestoreStatus() {
         const res = await fetch('api.php?action=get_restore_status');
         const json = await res.json();
         if (json.status === 'success') {
-            if (json.is_active || json.is_finished) {
+            if (json.is_active) {
                 cardProgress.style.display = 'block';
 
                 const fnEl = document.getElementById('card-restore-filename');
@@ -1408,57 +1408,44 @@ async function checkAndRenderRestoreStatus() {
                 const s = String(json.elapsed_seconds % 60).padStart(2, '0');
                 if (timerEl) timerEl.innerHTML = `<i class="ph ph-timer"></i> ${m}:${s}`;
 
-                if (json.is_finished) {
-                    if (phaseTitle) phaseTitle.innerHTML = `<i class="ph ph-check-circle" style="color: #10b981;"></i> Pemulihan Database Selesai Sukses (${json.finish_duration} detik)`;
-                    if (pctEl) { pctEl.textContent = '100%'; pctEl.style.color = '#10b981'; }
-                    if (barEl) { barEl.style.width = '100%'; barEl.style.background = '#10b981'; }
-                    if (tableBadge) { tableBadge.className = 'badge badge-success'; tableBadge.textContent = 'Selesai Penuh'; }
-
-                    for (let i = 1; i <= 4; i++) {
-                        updatePageRestoreStepUI(i, 'SUCCESS', 'Selesai');
-                    }
-                    if (tickerEl) tickerEl.textContent = json.last_log || 'Pemulihan database telah selesai dengan sukses.';
+                if (phaseTitle) phaseTitle.innerHTML = `<span class="pipeline-radar-pulse" style="background: #ef4444; box-shadow: 0 0 10px #ef4444;"></span> Pemulihan Database: <span style="color: #fff; font-family: monospace;">${json.source_file || 'simpadu'}</span>`;
+                
+                // Step 1: Safety Snapshot
+                if (json.has_safety_snapshot) {
+                    updatePageRestoreStepUI(1, 'SUCCESS', 'Snapshot Siap');
                 } else {
-                    // Masih Aktif
-                    if (phaseTitle) phaseTitle.innerHTML = `<span class="pipeline-radar-pulse" style="background: #ef4444; box-shadow: 0 0 10px #ef4444;"></span> Pemulihan Database: <span style="color: #fff; font-family: monospace;">${json.source_file || 'simpadu'}</span>`;
-                    
-                    // Step 1: Safety Snapshot
-                    if (json.has_safety_snapshot) {
-                        updatePageRestoreStepUI(1, 'SUCCESS', 'Snapshot Siap');
-                    } else {
-                        updatePageRestoreStepUI(1, 'RUNNING', 'Snapshot...');
-                    }
+                    updatePageRestoreStepUI(1, 'RUNNING', 'Snapshot...');
+                }
 
-                    // Step 2: Dekompresi
-                    if (json.active_table || json.has_safety_snapshot) {
-                        updatePageRestoreStepUI(2, 'SUCCESS', 'Dekompresi Selesai');
-                    } else {
-                        updatePageRestoreStepUI(2, 'STANDBY', 'Menunggu');
-                    }
+                // Step 2: Dekompresi
+                if (json.active_table || json.has_safety_snapshot) {
+                    updatePageRestoreStepUI(2, 'SUCCESS', 'Dekompresi Selesai');
+                } else {
+                    updatePageRestoreStepUI(2, 'STANDBY', 'Menunggu');
+                }
 
-                    // Step 3: Impor MySQL
-                    if (json.active_table) {
-                        updatePageRestoreStepUI(3, 'RUNNING', `Tabel: ${json.active_table}`);
-                        const desc3 = document.getElementById('page-restore-desc-3');
-                        if (desc3) desc3.innerHTML = `Mengisi tabel <code>${json.active_table}</code>`;
-                    } else {
-                        updatePageRestoreStepUI(3, 'RUNNING', 'Memproses...');
-                    }
+                // Step 3: Impor MySQL
+                if (json.active_table) {
+                    updatePageRestoreStepUI(3, 'RUNNING', `Tabel: ${json.active_table}`);
+                    const desc3 = document.getElementById('page-restore-desc-3');
+                    if (desc3) desc3.innerHTML = `Mengisi tabel <code>${json.active_table}</code>`;
+                } else {
+                    updatePageRestoreStepUI(3, 'RUNNING', 'Memproses...');
+                }
 
-                    // Step 4: Finalisasi
-                    updatePageRestoreStepUI(4, 'STANDBY', 'Menunggu');
+                // Step 4: Finalisasi
+                updatePageRestoreStepUI(4, 'STANDBY', 'Menunggu');
 
-                    if (tableBadge) {
-                        tableBadge.className = 'badge badge-info';
-                        tableBadge.textContent = json.active_table ? `Tabel: ${json.active_table}` : 'Memproses...';
-                    }
+                if (tableBadge) {
+                    tableBadge.className = 'badge badge-info';
+                    tableBadge.textContent = json.active_table ? `Tabel: ${json.active_table}` : 'Memproses...';
+                }
 
-                    if (pctEl) { pctEl.textContent = '85%'; pctEl.style.color = '#fca5a5'; }
-                    if (barEl) { barEl.style.width = '85%'; barEl.style.background = 'linear-gradient(90deg, #f97316, #ef4444, #ec4899)'; }
+                if (pctEl) { pctEl.textContent = '85%'; pctEl.style.color = '#fca5a5'; }
+                if (barEl) { barEl.style.width = '85%'; barEl.style.background = 'linear-gradient(90deg, #f97316, #ef4444, #ec4899)'; }
 
-                    if (tickerEl && json.query_snippet) {
-                        tickerEl.textContent = `[${json.timestamp || ''}] ${json.query_snippet}`;
-                    }
+                if (tickerEl && json.query_snippet) {
+                    tickerEl.textContent = `[${json.timestamp || ''}] ${json.query_snippet}`;
                 }
             } else {
                 cardProgress.style.display = 'none';
@@ -1505,7 +1492,7 @@ async function checkAndRenderBackupStatus() {
         const res = await fetch('api.php?action=get_backup_status');
         const json = await res.json();
         if (json.status === 'success') {
-            if (json.is_active || json.is_finished) {
+            if (json.is_active) {
                 cardProgress.style.display = 'block';
 
                 const fnEl = document.getElementById('card-backup-filename');
@@ -1522,31 +1509,22 @@ async function checkAndRenderBackupStatus() {
                 const s = String(json.elapsed_seconds % 60).padStart(2, '0');
                 if (timerEl) timerEl.innerHTML = `<i class="ph ph-timer"></i> ${m}:${s}`;
 
-                if (json.is_finished) {
-                    if (phaseTitle) phaseTitle.innerHTML = `<i class="ph ph-check-circle" style="color: #10b981;"></i> Pencadangan Database Selesai Sukses (${json.current_size_mb} MB)`;
-                    if (pctEl) { pctEl.textContent = '100%'; pctEl.style.color = '#10b981'; }
-                    if (barEl) { barEl.style.width = '100%'; barEl.style.background = '#10b981'; }
-                    if (tableBadge) { tableBadge.className = 'badge badge-success'; tableBadge.textContent = 'Selesai Penuh'; }
-                    if (tickerEl) tickerEl.textContent = json.last_log || 'Pencadangan database telah selesai dengan sukses.';
-                } else {
-                    // Masih Aktif
-                    if (phaseTitle) phaseTitle.innerHTML = `<span class="pipeline-radar-pulse" style="background: #3b82f6; box-shadow: 0 0 10px #3b82f6;"></span> Pencadangan Database: <span style="color: #fff; font-family: monospace;">${json.filename || 'simpadu'}</span> (${json.current_size_mb} MB / ~${json.estimated_total_mb} MB)`;
-                    
-                    if (tableBadge) {
-                        tableBadge.className = 'badge badge-primary';
-                        tableBadge.textContent = json.active_table ? `Tabel: ${json.active_table}` : 'mysqldump dump...';
-                    }
+                if (phaseTitle) phaseTitle.innerHTML = `<span class="pipeline-radar-pulse" style="background: #3b82f6; box-shadow: 0 0 10px #3b82f6;"></span> Pencadangan Database: <span style="color: #fff; font-family: monospace;">${json.filename || 'simpadu'}</span> (${json.current_size_mb} MB / ~${json.estimated_total_mb} MB)`;
+                
+                if (tableBadge) {
+                    tableBadge.className = 'badge badge-primary';
+                    tableBadge.textContent = json.active_table ? `Tabel: ${json.active_table}` : 'mysqldump dump...';
+                }
 
-                    const pctStr = `${json.percent || 0}%`;
-                    if (pctEl) { pctEl.textContent = pctStr; pctEl.style.color = '#93c5fd'; }
-                    if (barEl) { barEl.style.width = pctStr; barEl.style.background = 'linear-gradient(90deg, #06b6d4, #3b82f6, #6366f1)'; }
+                const pctStr = `${json.percent || 0}%`;
+                if (pctEl) { pctEl.textContent = pctStr; pctEl.style.color = '#93c5fd'; }
+                if (barEl) { barEl.style.width = pctStr; barEl.style.background = 'linear-gradient(90deg, #06b6d4, #3b82f6, #6366f1)'; }
 
-                    if (tickerEl) {
-                        if (json.query_snippet) {
-                            tickerEl.textContent = `[${json.timestamp || ''}] ${json.query_snippet}`;
-                        } else if (json.last_log) {
-                            tickerEl.textContent = json.last_log;
-                        }
+                if (tickerEl) {
+                    if (json.query_snippet) {
+                        tickerEl.textContent = `[${json.timestamp || ''}] ${json.query_snippet}`;
+                    } else if (json.last_log) {
+                        tickerEl.textContent = json.last_log;
                     }
                 }
             } else {
