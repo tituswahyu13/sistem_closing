@@ -804,11 +804,12 @@ if ($action === 'beli' || $action === 'batal') {
             $importedRowsCount = 0;
         }
 
+        $displayImported = $isFinished ? $importedRowsCount : min($importedRowsCount, $totalEstimatedRows);
         $rowsProgressPct = $totalEstimatedRows > 0 ? min(99, round(($importedRowsCount / $totalEstimatedRows) * 100, 1)) : 0;
-        $rowsFormatted = number_format($importedRowsCount, 0, ',', '.') . ' / ' . number_format($totalEstimatedRows, 0, ',', '.') . ' Baris';
+        $rowsFormatted = number_format($displayImported, 0, ',', '.') . ' / ' . number_format($totalEstimatedRows, 0, ',', '.') . ' Baris';
 
         if ($importedRowsCount > 0) {
-            $dynamicPercent = min(98, max(30, round(($importedRowsCount / $totalEstimatedRows) * 98)));
+            $dynamicPercent = min(98, max(30, round(($importedRowsCount / max($totalEstimatedRows, $importedRowsCount)) * 98)));
         } elseif ($importedTablesCount > 0) {
             $tableProgress = min(70, round(($importedTablesCount / $totalEstimatedTables) * 70));
             $dynamicPercent = min(98, 25 + $tableProgress);
