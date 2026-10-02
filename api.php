@@ -619,7 +619,7 @@ if ($action === 'beli' || $action === 'batal') {
         }
 
         $elapsedSeconds = $startTime ? (time() - strtotime($startTime)) : 0;
-        $isReallyActive = $isBackupProcessAlive || $isWriting || (!empty($activeQuery) && $elapsedSeconds < 7200);
+        $isReallyActive = $isBackupProcessAlive || $isWriting || (!empty($activeQuery) && !empty($startTime) && $elapsedSeconds < 7200);
         if ($isBackupProcessAlive) {
             $isFinished = false;
         }
@@ -796,13 +796,13 @@ if ($action === 'beli' || $action === 'batal') {
             $importedTablesCount = 0;
         }
 
-        if ($hasSafetySnapshot) {
-            // Safety snapshot selesai (25%) + progres impor tabel (25% s/d 95%)
+        if ($importedTablesCount > 0) {
             $tableProgress = min(70, round(($importedTablesCount / $totalEstimatedTables) * 70));
             $dynamicPercent = min(98, 25 + $tableProgress);
             if ($dynamicPercent < 30) $dynamicPercent = 30;
+        } elseif ($hasSafetySnapshot) {
+            $dynamicPercent = 25;
         } else {
-            // Masih dalam tahap safety snapshot (0% s/d 25%)
             $dynamicPercent = min(25, max(5, round(($elapsedSeconds / 300) * 25)));
         }
 
