@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Environment Local Settings
+.env.local
+
+# Backups & Large SQL Dumps
+backups/*.sql
+backups/*.sql.gz
+backups/*.log
+*.log
+
+# System & OS Files
+.DS_Store
+Thumbs.db

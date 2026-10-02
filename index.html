@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=6">
+    <link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
     <div class="app-container">
@@ -31,6 +31,18 @@
                 <button class="nav-item" data-tab="batal">
                     <i class="ph ph-x-circle"></i>
                     <span>Rencana Pembatalan YKK</span>
+                </button>
+                <button class="nav-item" data-tab="dibeli">
+                    <i class="ph ph-check-circle"></i>
+                    <span>Rekening Dibeli YKK</span>
+                </button>
+                <button class="nav-item" data-tab="pipeline">
+                    <i class="ph ph-git-merge"></i>
+                    <span>Master Pipeline & Otomasi</span>
+                </button>
+                <button class="nav-item" data-tab="backup">
+                    <i class="ph ph-hard-drives"></i>
+                    <span>Cadangan Database</span>
                 </button>
             </nav>
 
@@ -71,6 +83,60 @@
             </header>
 
             <div class="content-wrapper">
+                <!-- Budget Filter Panel (Khusus Tab Rencana Beli) -->
+                <div class="glass-panel budget-panel" id="budget-panel">
+                    <div class="budget-panel-content">
+                        <div class="budget-info-group">
+                            <div class="budget-icon-badge">
+                                <i class="ph ph-wallet"></i>
+                            </div>
+                            <div class="budget-text-group">
+                                <div class="budget-title-row">
+                                    <label for="budget-input" class="budget-label">Plafon / Budget Maksimal (Rp)</label>
+                                    <span class="budget-strategy-tag"><i class="ph ph-sort-ascending"></i> Prioritas Tagihan Terkecil (ASC)</span>
+                                </div>
+                                <span class="budget-hint">Menghitung alokasi anggaran secara otomatis untuk memaksimalkan jumlah pelanggan yang terbayar.</span>
+                            </div>
+                        </div>
+
+                        <div class="budget-actions-group">
+                            <div class="budget-input-wrapper">
+                                <span class="budget-currency-prefix">Rp</span>
+                                <input type="text" id="budget-input" class="budget-input-field" placeholder="Tanpa Batas (Semua)" autocomplete="off">
+                                <button type="button" id="btn-clear-budget" class="btn-clear-budget" title="Reset Budget" style="display: none;">
+                                    <i class="ph ph-x"></i>
+                                </button>
+                            </div>
+                            <div class="budget-preset-chips">
+                                <button type="button" class="preset-chip" data-amount="500000000">500 Jt</button>
+                                <button type="button" class="preset-chip" data-amount="1000000000">1 M</button>
+                                <button type="button" class="preset-chip" data-amount="1500000000">1.5 M</button>
+                                <button type="button" class="preset-chip" data-amount="2000000000">2 M</button>
+                                <button type="button" class="preset-chip active" data-amount="0">Semua</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar & Toggle Kuota (Muncul Saat Budget Terisi) -->
+                    <div class="budget-progress-section" id="budget-progress-section" style="display: none;">
+                        <div class="budget-progress-header">
+                            <div class="progress-label-wrap">
+                                <span class="progress-title">Penyerapan Anggaran:</span>
+                                <strong id="budget-percent-text" class="text-accent">0%</strong>
+                                <span id="budget-summary-text" class="budget-summary-text">(Rp 0 / Rp 0)</span>
+                            </div>
+                            <label class="toggle-switch-label" title="Saring baris tabel agar hanya menampilkan yang masuk alokasi">
+                                <input type="checkbox" id="toggle-only-kuota" class="toggle-checkbox" checked>
+                                <span class="toggle-custom"></span>
+                                <span class="toggle-text">Hanya Tampilkan yang Masuk Kuota</span>
+                            </label>
+                        </div>
+                        <div class="budget-progress-bar-bg">
+                            <div class="budget-progress-bar-fill" id="budget-progress-bar-fill" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Stats Row -->
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -80,6 +146,7 @@
                         <div class="stat-details">
                             <span class="stat-label">Total Pelanggan</span>
                             <h3 class="stat-value" id="stat-total">0</h3>
+                            <span class="stat-subtext" id="stat-total-sub" style="display: none;"></span>
                         </div>
                     </div>
                     <div class="stat-card" id="stat-card-jumlah">
@@ -87,8 +154,19 @@
                             <i class="ph ph-money"></i>
                         </div>
                         <div class="stat-details">
-                            <span class="stat-label">Total Jumlah (Rp)</span>
+                            <span class="stat-label">Total Tagihan (Rp)</span>
                             <h3 class="stat-value" id="stat-total-jumlah">Rp 0</h3>
+                            <span class="stat-subtext" id="stat-total-jumlah-sub" style="display: none;"></span>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="stat-card-sisa" style="display: none;">
+                        <div class="stat-icon" style="background: rgba(139, 92, 246, 0.2); color: #c084fc;">
+                            <i class="ph ph-piggy-bank"></i>
+                        </div>
+                        <div class="stat-details">
+                            <span class="stat-label">Sisa Budget (Rp)</span>
+                            <h3 class="stat-value" id="stat-sisa-budget">Rp 0</h3>
+                            <span class="stat-subtext" id="stat-sisa-sub"></span>
                         </div>
                     </div>
                     <div class="stat-card" id="stat-card-alasan" style="display: none;">
@@ -123,12 +201,15 @@
                                     <th>NO PDAM</th>
                                     <th>NAMA PELANGGAN</th>
                                     <th>PERIODE</th>
+                                    <th id="th-tgl-bayar" style="display: none;">TGL BAYAR</th>
                                     <th>LOKASI BAYAR</th>
                                     <th>GOLONGAN</th>
                                     <th id="th-alasan" style="display: none;">ALASAN</th>
+                                    <th id="th-kuota" style="display: none;">STATUS KUOTA</th>
                                     <th>RK</th>
                                     <th>NON AIR</th>
-                                    <th>JUMLAH</th>
+                                    <th id="th-denda" style="display: none;">DENDA YKK</th>
+                                    <th id="th-jumlah">JUMLAH</th>
                                     <th>AKSI</th>
                                 </tr>
                             </thead>
@@ -147,8 +228,566 @@
                     </div>
                 </div>
 
+                <!-- Unified Master Pipeline & Otomasi Section -->
+                <div class="pipeline-section" id="pipeline-section" style="display: none;">
+                    <!-- Schedule Banner Card with Live Countdown -->
+                    <div class="glass-panel schedule-banner" style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95)); border-left: 4px solid #8b5cf6;">
+                        <div class="schedule-banner-content">
+                            <div class="schedule-icon-box" id="schedule-status-icon" style="background: rgba(139, 92, 246, 0.2); color: #a78bfa;">
+                                <i class="ph ph-git-merge"></i>
+                            </div>
+                            <div class="schedule-text-box">
+                                <div class="schedule-title-row">
+                                    <h3>Master Pipeline Otomasi (6-Tahapan Terpadu)</h3>
+                                    <span class="badge badge-purple" id="pipeline-status-badge">
+                                        <i class="ph ph-shield-check"></i> Siap Eksekusi
+                                    </span>
+                                </div>
+                                <div class="countdown-container" id="countdown-container">
+                                    <span class="countdown-label">Hitung Mundur Jadwal Otomatis:</span>
+                                    <strong class="countdown-timer" id="countdown-timer">--:--:--</strong>
+                                    <span class="countdown-detail" id="countdown-detail">(Waktu Server)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Visual Pipeline Stepper (6 Steps) -->
+                    <div class="glass-panel mt-4 pipeline-stepper-panel" style="padding: 1.75rem 1.5rem;">
+                        <div class="panel-header" style="margin-bottom: 1rem;">
+                            <div>
+                                <h2><i class="ph ph-steps"></i> Alur Tahapan Eksekusi Sekuensial</h2>
+                                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+                                    Pemantauan realtime status eksekusi 6 tahap otomatisasi transaksi.
+                                </p>
+                            </div>
+                            <span class="badge badge-secondary" id="pipeline-batch-id-badge">Batch: Siap Dijalankan</span>
+                        </div>
+
+                        <!-- Progress Bar & Live Status Phase Indicator -->
+                        <div class="pipeline-progress-wrapper" id="pipeline-progress-wrapper">
+                            <div class="progress-info-row">
+                                <div class="progress-left-info">
+                                    <div class="radar-pulse-dot" id="pipeline-radar-pulse"></div>
+                                    <span class="progress-phase-title" id="pipeline-progress-phase-title">Standby: Menunggu Eksekusi</span>
+                                    <span class="badge badge-secondary" id="pipeline-live-timer"><i class="ph ph-timer"></i> 00:00</span>
+                                </div>
+                                <div class="progress-right-info">
+                                    <span class="progress-percent" id="pipeline-progress-percent">0%</span>
+                                </div>
+                            </div>
+                            <div class="pipeline-progress-track">
+                                <div class="pipeline-progress-fill" id="pipeline-progress-fill">
+                                    <div class="progress-shimmer"></div>
+                                </div>
+                            </div>
+                            <div class="progress-steps-subtext">
+                                <span id="subtext-step-0">0. OFFLINE (0)</span>
+                                <span id="subtext-step-1">1. Backup DB</span>
+                                <span id="subtext-step-2">2. Beli YKK</span>
+                                <span id="subtext-step-3">3. Tutup Tagihan</span>
+                                <span id="subtext-step-4">4. Transfer PPOB</span>
+                                <span id="subtext-step-5">5. Online (1)</span>
+                            </div>
+                        </div>
+
+                        <div class="pipeline-stepper-grid">
+                            <!-- Step 0 -->
+                            <div class="step-card" id="step-card-0">
+                                <div class="step-header">
+                                    <span class="step-num">0</span>
+                                    <span class="step-status-badge" id="step-badge-0">STANDBY</span>
+                                </div>
+                                <div class="step-icon"><i class="ph ph-lock-key"></i></div>
+                                <h4 class="step-title">Maintenance Mode</h4>
+                                <p class="step-desc">Set <code>pdam.info OFFLINE = '0'</code> untuk menonaktifkan transaksi luar.</p>
+                                <div class="step-meta" id="step-meta-0">-</div>
+                            </div>
+
+                            <div class="step-connector"><i class="ph ph-arrow-right"></i></div>
+
+                            <!-- Step 1 -->
+                            <div class="step-card" id="step-card-1">
+                                <div class="step-header">
+                                    <span class="step-num">1</span>
+                                    <span class="step-status-badge" id="step-badge-1">STANDBY</span>
+                                </div>
+                                <div class="step-icon"><i class="ph ph-database"></i></div>
+                                <h4 class="step-title">Backup Database</h4>
+                                <p class="step-desc">Pencadangan penuh DB <code>simpadu</code> ke arsip terkompresi <code>.sql.gz</code>.</p>
+                                <div class="step-meta" id="step-meta-1">-</div>
+                            </div>
+
+                            <div class="step-connector"><i class="ph ph-arrow-right"></i></div>
+
+                            <!-- Step 2 -->
+                            <div class="step-card" id="step-card-2">
+                                <div class="step-header">
+                                    <span class="step-num">2</span>
+                                    <span class="step-status-badge" id="step-badge-2">STANDBY</span>
+                                </div>
+                                <div class="step-icon"><i class="ph ph-shopping-cart"></i></div>
+                                <h4 class="step-title">Transaksi Beli YKK</h4>
+                                <p class="step-desc">Eksekusi SP <code>sp_eksekusi_beli_ykk</code> sesuai alokasi budget.</p>
+                                <div class="step-meta" id="step-meta-2">-</div>
+                            </div>
+
+                            <div class="step-connector"><i class="ph ph-arrow-right"></i></div>
+
+                            <!-- Step 3 -->
+                            <div class="step-card" id="step-card-3">
+                                <div class="step-header">
+                                    <span class="step-num">3</span>
+                                    <span class="step-status-badge" id="step-badge-3">STANDBY</span>
+                                </div>
+                                <div class="step-icon"><i class="ph ph-calendar-x"></i></div>
+                                <h4 class="step-title">Tutup Tagihan</h4>
+                                <p class="step-desc">Tutup periode aktif & pindahkan sisa rekening belum lunas ke <code>spd_tunggak</code>.</p>
+                                <div class="step-meta" id="step-meta-3">-</div>
+                            </div>
+
+                            <div class="step-connector"><i class="ph ph-arrow-right"></i></div>
+
+                            <!-- Step 4 -->
+                            <div class="step-card" id="step-card-4">
+                                <div class="step-header">
+                                    <span class="step-num">4</span>
+                                    <span class="step-status-badge" id="step-badge-4">STANDBY</span>
+                                </div>
+                                <div class="step-icon"><i class="ph ph-swap"></i></div>
+                                <h4 class="step-title">Transfer PPOB</h4>
+                                <p class="step-desc">Truncate & sinkronisasi data loket mitra ke tabel <code>pdam.ppob</code>.</p>
+                                <div class="step-meta" id="step-meta-4">-</div>
+                            </div>
+
+                            <div class="step-connector"><i class="ph ph-arrow-right"></i></div>
+
+                            <!-- Step 5 -->
+                            <div class="step-card" id="step-card-5">
+                                <div class="step-header">
+                                    <span class="step-num">5</span>
+                                    <span class="step-status-badge" id="step-badge-5">STANDBY</span>
+                                </div>
+                                <div class="step-icon"><i class="ph ph-broadcast"></i></div>
+                                <h4 class="step-title">Online Kembali</h4>
+                                <p class="step-desc">Set <code>pdam.info OFFLINE = '1'</code>, sistem siap melayani transaksi.</p>
+                                <div class="step-meta" id="step-meta-5">-</div>
+                            </div>
+                        </div>
+
+                        <!-- Live Pipeline Query Stream Ticker -->
+                        <div id="pipeline-live-query-ticker-container" style="margin-top: 1rem; background: #020617; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 0.75rem 1rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 0.75rem; color: #94a3b8;">
+                                <span><i class="ph ph-terminal-window"></i> Query / Operasi Realtime di MySQL Server:</span>
+                                <span class="badge badge-info" id="pipeline-active-table-badge">Tabel: -</span>
+                            </div>
+                            <pre id="pipeline-query-ticker" style="margin: 0; font-family: monospace; font-size: 0.75rem; color: #6ee7b7; white-space: pre-wrap; max-height: 70px; overflow-y: auto;">Standby: Menunggu eksekusi pipeline...</pre>
+                        </div>
+                    </div>
+
+                    <!-- Grid Setting & Simulation -->
+                    <div class="otomasi-grid mt-4">
+                        <!-- Form Setting Target -->
+                        <div class="glass-panel setting-card">
+                            <div class="panel-header">
+                                <h2><i class="ph ph-sliders"></i> Atur Jadwal & Plafon Budget</h2>
+                            </div>
+                            <form id="form-ykk-config" class="setting-form">
+                                <div class="form-group">
+                                    <label>Target Periode Eksekusi (Otomatis)</label>
+                                    <div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between;">
+                                        <div>
+                                            <strong id="display-auto-periode" style="color: #a5b4fc; font-size: 1.1rem; font-family: monospace;">Memuat...</strong>
+                                            <span style="display: block; font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">(Periode Aktif SIMPADU - 1 Bulan)</span>
+                                        </div>
+                                        <span class="badge badge-success"><i class="ph ph-magic-wand"></i> Otomatis</span>
+                                    </div>
+                                    <input type="hidden" id="cfg-periode">
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="cfg-jadwal">Waktu & Jam Eksekusi Otomatis</label>
+                                    <input type="datetime-local" id="cfg-jadwal" class="input-control" required>
+                                    <div class="schedule-preset-chips mt-2">
+                                        <button type="button" class="preset-chip btn-preset-schedule" id="btn-preset-2min">
+                                            <i class="ph ph-lightning"></i> 2 Menit Lagi (Uji Coba)
+                                        </button>
+                                        <button type="button" class="preset-chip btn-preset-schedule" id="btn-preset-21st">
+                                            <i class="ph ph-calendar"></i> Tgl 21 Pukul 00:05 (Standar)
+                                        </button>
+                                    </div>
+                                    <small class="form-hint">Runner cron server akan otomatis memproses seluruh 6 tahapan saat waktu ini tercapai.</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="cfg-budget">Plafon Budget Maksimal Beli YKK (Rp)</label>
+                                    <div class="budget-input-wrapper">
+                                        <span class="budget-currency-prefix">Rp</span>
+                                        <input type="text" id="cfg-budget" class="budget-input-field" placeholder="0 (Tanpa Batas)">
+                                    </div>
+                                    <small class="form-hint">Kosongkan / isi 0 jika ingin membeli seluruh rekening yang memenuhi syarat tanpa batasan kuota.</small>
+                                </div>
+
+                                <div class="form-actions">
+                                    <button type="submit" class="btn btn-primary" id="btn-save-config">
+                                        <i class="ph ph-floppy-disk"></i> Simpan Jadwal Antrean
+                                    </button>
+                                    <button type="button" class="btn btn-secondary" id="btn-run-simulasi">
+                                        <i class="ph ph-play-circle"></i> Uji Simulasi
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Panel Hasil Simulasi / Status Aktif & Manual Trigger -->
+                        <div class="glass-panel preview-card">
+                            <div class="panel-header">
+                                <h2><i class="ph ph-chart-donut"></i> Ringkasan Simulasi & Eksekusi Langsung</h2>
+                                <span class="badge badge-info" id="sim-status-badge">Siap Simulasi</span>
+                            </div>
+                            <div class="simulasi-results" id="simulasi-results">
+                                <div class="sim-stat-row">
+                                    <span class="sim-label">Total Rekening Ter-cover:</span>
+                                    <strong class="sim-val" id="sim-total-rek">0 Rekening</strong>
+                                </div>
+                                <div class="sim-stat-row">
+                                    <span class="sim-label">Total Tagihan Pokok:</span>
+                                    <strong class="sim-val" id="sim-total-tagihan">Rp 0</strong>
+                                </div>
+                                <div class="sim-stat-row">
+                                    <span class="sim-label">Estimasi Denda YKK:</span>
+                                    <strong class="sim-val text-warning" id="sim-total-denda">Rp 0</strong>
+                                </div>
+                                <div class="sim-stat-row highlight">
+                                    <span class="sim-label">Total Pembayaran YKK:</span>
+                                    <strong class="sim-val text-accent" id="sim-total-bayar">Rp 0</strong>
+                                </div>
+                                <div class="sim-stat-row">
+                                    <span class="sim-label">Sisa Anggaran:</span>
+                                    <strong class="sim-val text-success" id="sim-sisa-budget">Rp 0</strong>
+                                </div>
+                            </div>
+                            
+                            <div class="manual-run-wrap mt-4" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                <button type="button" class="btn btn-primary" id="btn-run-master-pipeline" style="width: 100%; background: linear-gradient(135deg, #6366f1, #8b5cf6); box-shadow: 0 4px 15px rgba(139, 92, 246, 0.35); justify-content: center;">
+                                    <i class="ph ph-play"></i> Jalankan Master Pipeline Sekarang (Manual Run)
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btn-refresh-pipeline-logs" style="justify-content: center;">
+                                    <i class="ph ph-arrows-clockwise"></i> Refresh Log & Status
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pipeline Live Console & History -->
+                    <div class="dashboard-grid mt-4" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <!-- Live Terminal Console -->
+                        <div class="glass-panel">
+                            <div class="panel-header">
+                                <h2><i class="ph ph-terminal"></i> Terminal Eksekusi Live</h2>
+                                <span class="badge badge-secondary" id="pipeline-live-indicator">IDLE</span>
+                            </div>
+                            <pre class="log-console" id="pipeline-console-output" style="height: 280px; overflow-y: auto; background: #080c14; padding: 1rem; border-radius: 8px; font-family: monospace; font-size: 0.8rem; color: #a5b4fc; border: 1px solid rgba(255,255,255,0.06); white-space: pre-wrap;">Menunggu eksekusi master pipeline...</pre>
+                        </div>
+
+                        <!-- Riwayat Batch Execution -->
+                        <div class="glass-panel">
+                            <div class="panel-header">
+                                <h2><i class="ph ph-clock-counter-clockwise"></i> Riwayat Batch Pipeline (Audit Trail)</h2>
+                                <span class="badge badge-secondary">Terbaru</span>
+                            </div>
+                            <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+                                <table class="data-table" style="font-size: 0.82rem;">
+                                    <thead>
+                                        <tr>
+                                            <th>BATCH ID</th>
+                                            <th>PERIODE</th>
+                                            <th>WAKTU</th>
+                                            <th>STATUS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="pipeline-history-tbody">
+                                        <tr>
+                                            <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 1.5rem;">
+                                                Belum ada riwayat batch pipeline.
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Panel Daftar Konfigurasi & Antrean Jadwal (ykk_config) -->
+                    <div class="glass-panel mt-4">
+                        <div class="panel-header">
+                            <div>
+                                <h2><i class="ph ph-calendar-blank"></i> Antrean & Konfigurasi Jadwal Terdaftar (ykk_config)</h2>
+                                <p style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px;">
+                                    Daftar jadwal antrean otomatisasi bulanan yang telah disimpan di database.
+                                </p>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" id="btn-refresh-configs" type="button">
+                                <i class="ph ph-arrows-clockwise"></i> Refresh Jadwal
+                            </button>
+                        </div>
+                        <div class="table-responsive" style="max-height: 260px; overflow-y: auto;">
+                            <table class="data-table" style="font-size: 0.82rem;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 50px;">ID</th>
+                                        <th>PERIODE TARGET</th>
+                                        <th>JADWAL EKSEKUSI</th>
+                                        <th style="text-align: right;">PLAFON BUDGET</th>
+                                        <th>STATUS</th>
+                                        <th>WAKTU INPUT</th>
+                                        <th>WAKTU EKSEKUSI</th>
+                                        <th>CATATAN TERAKHIR</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ykk-config-tbody">
+                                    <tr>
+                                        <td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 1.5rem;">
+                                            Memuat daftar jadwal antrean...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Backup Database Section -->
+                <div class="backup-section" id="backup-section" style="display: none;">
+                    <!-- Backup Overview Banner -->
+                    <div class="glass-panel schedule-banner">
+                        <div class="banner-icon">
+                            <i class="ph ph-shield-check"></i>
+                        </div>
+                        <div class="banner-content">
+                            <div class="banner-header">
+                                <h3>Arsip Cadangan Database 'simpadu'</h3>
+                                <span class="badge badge-success">
+                                    <i class="ph ph-check-circle"></i> TERINTEGRASI TAHAP 1 PIPELINE
+                                </span>
+                            </div>
+                            <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.4rem; line-height: 1.5;">
+                                Pencadangan database otomatis diproses pada <strong>Tahap 1 Master Pipeline</strong> sebelum transaksi dijalankan, atau dapat dicadangkan secara manual kapan saja di bawah ini.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Backup Stats Grid -->
+                    <div class="stats-grid mt-4">
+                        <div class="glass-panel stat-card">
+                            <div class="stat-icon-wrapper purple">
+                                <i class="ph ph-files"></i>
+                            </div>
+                            <div class="stat-content">
+                                <span class="stat-label">Total Berkas Cadangan</span>
+                                <h3 class="stat-value" id="stat-backup-files">0 Berkas</h3>
+                                <span class="stat-sub">Tersimpan di direktori /backups/</span>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel stat-card">
+                            <div class="stat-icon-wrapper info">
+                                <i class="ph ph-hard-drive"></i>
+                            </div>
+                            <div class="stat-content">
+                                <span class="stat-label">Total Ukuran Penyimpanan</span>
+                                <h3 class="stat-value text-info" id="stat-backup-size">0 MB</h3>
+                                <span class="stat-sub">Terkompresi format .sql.gz (~85% hemat)</span>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel stat-card">
+                            <div class="stat-icon-wrapper success">
+                                <i class="ph ph-clock-counter-clockwise"></i>
+                            </div>
+                            <div class="stat-content">
+                                <span class="stat-label">Pencadangan Terakhir</span>
+                                <h3 class="stat-value text-success" style="font-size: 1.15rem;" id="stat-backup-last">-</h3>
+                                <span class="stat-sub" id="stat-backup-last-sub">Status: Berhasil</span>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel stat-card">
+                            <div class="stat-icon-wrapper warning">
+                                <i class="ph ph-trash"></i>
+                            </div>
+                            <div class="stat-content">
+                                <span class="stat-label">Kebijakan Retensi</span>
+                                <h3 class="stat-value text-warning">14 Hari</h3>
+                                <span class="stat-sub">Berkas lama otomatis dihapus</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Backup Progress Panel (Tetap Tampil & Berlanjut Saat Pindah Halaman/Reload) -->
+                    <div class="pipeline-progress-wrapper mt-4" id="card-backup-live-progress" style="display: none; border-color: rgba(59, 130, 246, 0.35); box-shadow: 0 10px 30px rgba(59, 130, 246, 0.15);">
+                        <div class="pipeline-progress-top">
+                            <div class="pipeline-progress-phase">
+                                <span class="pipeline-radar-pulse" style="background: #3b82f6; box-shadow: 0 0 10px #3b82f6;"></span>
+                                <h3 id="card-backup-phase-title" style="color: #93c5fd;">
+                                    Pencadangan Database: <span id="card-backup-filename" style="color: #fff; font-family: monospace;">simpadu_xxxx.sql.gz</span>
+                                </h3>
+                                <span class="badge badge-info" id="card-backup-live-timer" style="margin-left: 0.5rem;">
+                                    <i class="ph ph-timer"></i> 00:00
+                                </span>
+                            </div>
+                            <div class="pipeline-progress-pct" id="card-backup-pct" style="color: #93c5fd;">
+                                0%
+                            </div>
+                        </div>
+
+                        <div class="pipeline-progress-track">
+                            <div class="pipeline-progress-bar" id="card-backup-progress-bar" style="width: 0%; background: linear-gradient(90deg, #06b6d4, #3b82f6, #6366f1); box-shadow: 0 0 12px rgba(59, 130, 246, 0.6);"></div>
+                        </div>
+
+                        <!-- Live Backup Query Stream Ticker -->
+                        <div style="margin-top: 1rem; background: #020617; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 0.75rem 1rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 0.75rem; color: #94a3b8;">
+                                <span><i class="ph ph-terminal-window"></i> Query Realtime di MySQL Server (mysqldump):</span>
+                                <span class="badge badge-primary" id="card-backup-active-table-badge">Tabel: -</span>
+                            </div>
+                            <pre id="card-backup-query-ticker" style="margin: 0; font-family: monospace; font-size: 0.75rem; color: #93c5fd; white-space: pre-wrap; max-height: 70px; overflow-y: auto;">Menghubungkan ke pemantau proses MySQL...</pre>
+                        </div>
+                    </div>
+
+                    <!-- Live Restore Progress Panel (Tetap Tampil & Berlanjut Saat Pindah Halaman/Reload) -->
+                    <div class="pipeline-progress-wrapper mt-4" id="card-restore-live-progress" style="display: none; border-color: rgba(239, 68, 68, 0.35); box-shadow: 0 10px 30px rgba(239, 68, 68, 0.15);">
+                        <div class="pipeline-progress-top">
+                            <div class="pipeline-progress-phase">
+                                <span class="pipeline-radar-pulse" style="background: #ef4444; box-shadow: 0 0 10px #ef4444;"></span>
+                                <h3 id="card-restore-phase-title" style="color: #fca5a5;">
+                                    Pemulihan Database: <span id="card-restore-filename" style="color: #fff; font-family: monospace;">simpadu_xxxx.sql.gz</span>
+                                </h3>
+                                <span class="badge badge-warning" id="card-restore-live-timer" style="margin-left: 0.5rem;">
+                                    <i class="ph ph-timer"></i> 00:00
+                                </span>
+                            </div>
+                            <div class="pipeline-progress-pct" id="card-restore-pct" style="color: #fca5a5;">
+                                85%
+                            </div>
+                        </div>
+
+                        <div class="pipeline-progress-track">
+                            <div class="pipeline-progress-bar" id="card-restore-progress-bar" style="width: 85%; background: linear-gradient(90deg, #f97316, #ef4444, #ec4899); box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);"></div>
+                        </div>
+
+                        <!-- 4 Step Cards for Restore -->
+                        <div class="pipeline-stepper-grid" style="grid-template-columns: repeat(4, 1fr); margin-top: 1rem;">
+                            <div class="step-card" id="page-restore-step-1">
+                                <div class="step-card-header">
+                                    <span class="step-num">1</span>
+                                    <span class="badge badge-secondary step-status-badge">STANDBY</span>
+                                </div>
+                                <i class="ph ph-shield-check step-icon"></i>
+                                <h4 class="step-title">Safety Snapshot</h4>
+                                <p class="step-desc">Cadangan darurat data sebelum ditimpa.</p>
+                                <div class="step-meta" id="page-restore-meta-1">-</div>
+                            </div>
+
+                            <div class="step-card" id="page-restore-step-2">
+                                <div class="step-card-header">
+                                    <span class="step-num">2</span>
+                                    <span class="badge badge-secondary step-status-badge">STANDBY</span>
+                                </div>
+                                <i class="ph ph-file-zip step-icon"></i>
+                                <h4 class="step-title">Dekompresi GZIP</h4>
+                                <p class="step-desc">Mengekstrak stream arsip <code>.sql.gz</code>.</p>
+                                <div class="step-meta" id="page-restore-meta-2">-</div>
+                            </div>
+
+                            <div class="step-card" id="page-restore-step-3">
+                                <div class="step-card-header">
+                                    <span class="step-num">3</span>
+                                    <span class="badge badge-secondary step-status-badge">STANDBY</span>
+                                </div>
+                                <i class="ph ph-database step-icon"></i>
+                                <h4 class="step-title">Impor Data MySQL</h4>
+                                <p class="step-desc" id="page-restore-desc-3">Injeksi skema, tabel, rutin & data.</p>
+                                <div class="step-meta" id="page-restore-meta-3">Tabel aktif: -</div>
+                            </div>
+
+                            <div class="step-card" id="page-restore-step-4">
+                                <div class="step-card-header">
+                                    <span class="step-num">4</span>
+                                    <span class="badge badge-secondary step-status-badge">STANDBY</span>
+                                </div>
+                                <i class="ph ph-check-circle step-icon"></i>
+                                <h4 class="step-title">Finalisasi</h4>
+                                <p class="step-desc">Verifikasi integritas & refresh skema.</p>
+                                <div class="step-meta" id="page-restore-meta-4">-</div>
+                            </div>
+                        </div>
+
+                        <!-- Live Query Stream Ticker -->
+                        <div style="margin-top: 1rem; background: #020617; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 0.75rem 1rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 0.75rem; color: #94a3b8;">
+                                <span><i class="ph ph-terminal-window"></i> Query Realtime di MySQL Server:</span>
+                                <span class="badge badge-info" id="card-restore-active-table-badge">Tabel: -</span>
+                            </div>
+                            <pre id="card-restore-query-ticker" style="margin: 0; font-family: monospace; font-size: 0.75rem; color: #fca5a5; white-space: pre-wrap; max-height: 70px; overflow-y: auto;">Menghubungkan ke pemantau proses MySQL...</pre>
+                        </div>
+                    </div>
+
+                    <!-- Backup Action & File List Panel -->
+                    <div class="glass-panel history-container mt-4">
+                        <div class="panel-header" style="flex-wrap: wrap; gap: 1rem;">
+                            <div>
+                                <h2><i class="ph ph-archive"></i> Berkas Cadangan Database</h2>
+                                <p style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px;">
+                                    Daftar arsip database 'simpadu' siap diunduh atau dipulihkan (restore) kapan saja.
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn btn-secondary btn-sm" id="btn-refresh-backups">
+                                    <i class="ph ph-arrows-clockwise"></i> Refresh
+                                </button>
+                                <button class="btn btn-primary btn-sm" id="btn-run-backup-now">
+                                    <i class="ph ph-play"></i> Cadangkan Sekarang
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 50px;">NO</th>
+                                        <th>NAMA BERKAS ARSIP</th>
+                                        <th style="text-align: right;">UKURAN</th>
+                                        <th>WAKTU PEMBUATAN</th>
+                                        <th>USIA / RETENSI</th>
+                                        <th>STATUS</th>
+                                        <th style="text-align: center;">AKSI</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="backup-table-body">
+                                    <tr>
+                                        <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                                            Sedang memuat daftar berkas cadangan...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Backup Activity Log Panel -->
+                    <div class="glass-panel mt-4">
+                        <div class="panel-header">
+                            <h2><i class="ph ph-terminal-window"></i> Catatan Log Aktivitas Pencadangan (backup.log)</h2>
+                            <span class="badge badge-secondary">50 Baris Terakhir</span>
+                        </div>
+                        <pre class="log-console" id="backup-log-console" style="max-height: 220px; overflow-y: auto; background: #080c14; padding: 1rem; border-radius: 8px; font-family: monospace; font-size: 0.8rem; color: #a5b4fc; border: 1px solid rgba(255,255,255,0.06); white-space: pre-wrap;">Memuat log aktivitas...</pre>
+                    </div>
+                </div>
+
                 <!-- SQL Query Reference -->
-                <div class="glass-panel query-container mt-4">
+                <div class="glass-panel query-container mt-4" id="query-container-panel">
                     <div class="panel-header">
                         <h2>
                             <i class="ph ph-code"></i> Referensi SQL Query
@@ -162,9 +801,134 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Modal Konfirmasi Restore Database -->
+            <div class="modal-overlay" id="modal-restore" style="display: none; position: fixed; inset: 0; background: rgba(5, 8, 16, 0.85); backdrop-filter: blur(8px); z-index: 1000; align-items: center; justify-content: center;">
+                <div class="glass-panel modal-card" style="width: 100%; max-width: 520px; padding: 1.75rem; border: 1px solid rgba(239, 68, 68, 0.3); box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
+                    <div class="panel-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.75rem; margin-bottom: 1.25rem;">
+                        <h2 style="color: #ef4444; font-size: 1.25rem;"><i class="ph ph-warning-octagon"></i> Konfirmasi Pemulihan Database</h2>
+                        <button class="icon-btn" id="btn-close-restore-modal" type="button"><i class="ph ph-x"></i></button>
+                    </div>
+
+                    <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 0.85rem; margin-bottom: 1.25rem; font-size: 0.85rem; color: #fca5a5;">
+                        <strong style="display: block; margin-bottom: 2px;"><i class="ph ph-warning"></i> PERINGATAN TINGKAT TINGGI:</strong>
+                        <span>Proses ini akan <strong>menimpa data pada database target</strong> dengan isi dari berkas arsip yang dipilih.</span>
+                    </div>
+
+                    <!-- Form Konfirmasi Restore -->
+                    <form id="form-restore-database">
+                        <div style="margin-bottom: 1rem;">
+                            <label style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; display: block;">Berkas Arsip yang Dipilih:</label>
+                            <div style="background: rgba(0,0,0,0.3); padding: 0.65rem 0.85rem; border-radius: 6px; font-family: monospace; font-size: 0.85rem; color: #818cf8; border: 1px solid rgba(255,255,255,0.06);" id="restore-file-display">
+                                simpadu_xxxx.sql.gz
+                            </div>
+                            <input type="hidden" id="restore-file-name">
+                        </div>
+
+                        <div style="margin-bottom: 1rem;">
+                            <label for="restore-target-db" style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; display: block;">Database Tujuan:</label>
+                            <input type="text" id="restore-target-db" value="simpadu" style="width: 100%; padding: 0.55rem 0.75rem; font-size: 0.9rem; border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff;" required>
+                            <small style="color: var(--text-secondary); font-size: 0.75rem; display: block; margin-top: 3px;">Default: <code>simpadu</code> (atau ganti dengan nama DB uji coba lain).</small>
+                        </div>
+
+                        <div style="display: flex; align-items: center; gap: 0.5rem; background: rgba(255,255,255,0.03); padding: 0.65rem 0.85rem; border-radius: 6px; margin-bottom: 1.25rem;">
+                            <input type="checkbox" id="restore-safety-backup" checked style="width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer;">
+                            <label for="restore-safety-backup" style="font-size: 0.82rem; cursor: pointer; margin: 0; color: #e2e8f0;">
+                                Buat cadangan darurat (Safety Snapshot) sebelum pemulihan
+                            </label>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <label for="restore-confirm-text" style="font-size: 0.8rem; color: #fca5a5; margin-bottom: 4px; display: block;">
+                                Ketik kata <strong>RESTORE</strong> untuk mengonfirmasi:
+                            </label>
+                            <input type="text" id="restore-confirm-text" placeholder="Ketik RESTORE di sini" style="width: 100%; padding: 0.55rem 0.75rem; font-size: 0.9rem; border-radius: 6px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.4); color: #fff; text-transform: uppercase;" required autocomplete="off">
+                        </div>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+                            <button type="button" class="btn btn-secondary" id="btn-cancel-restore">Batal</button>
+                            <button type="submit" class="btn btn-danger" id="btn-submit-restore" style="background: #dc2626; border-color: #ef4444;">
+                                <i class="ph ph-arrow-counter-clockwise"></i> Mulai Pemulihan
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Animasi Progres Restore -->
+                    <div id="restore-progress-container" class="restore-progress-box" style="display: none;">
+                        <div class="restore-progress-header">
+                            <div class="restore-progress-title">
+                                <span class="restore-live-radar"></span>
+                                <span id="restore-progress-status-text">Memproses Pemulihan Database...</span>
+                            </div>
+                            <span class="badge badge-warning" id="restore-live-timer">
+                                <i class="ph ph-timer"></i> 00:00
+                            </span>
+                        </div>
+
+                        <div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px;">
+                                <span>Kemajuan Pemulihan</span>
+                                <strong id="restore-percent-text" style="color: #fca5a5;">0%</strong>
+                            </div>
+                            <div class="restore-progress-track">
+                                <div class="restore-progress-fill" id="restore-progress-bar" style="width: 0%;"></div>
+                            </div>
+                        </div>
+
+                        <div class="restore-steps-list">
+                            <div class="restore-step-row" id="restore-step-1">
+                                <div class="restore-step-left">
+                                    <i class="ph ph-circle-dashed restore-step-icon"></i>
+                                    <span>1. Cadangan Pengaman (Safety Snapshot)</span>
+                                </div>
+                                <span class="badge badge-secondary restore-step-badge">Menunggu</span>
+                            </div>
+                            <div class="restore-step-row" id="restore-step-2">
+                                <div class="restore-step-left">
+                                    <i class="ph ph-circle-dashed restore-step-icon"></i>
+                                    <span>2. Dekompresi Berkas GZIP (.sql.gz)</span>
+                                </div>
+                                <span class="badge badge-secondary restore-step-badge">Menunggu</span>
+                            </div>
+                            <div class="restore-step-row" id="restore-step-3">
+                                <div class="restore-step-left">
+                                    <i class="ph ph-circle-dashed restore-step-icon"></i>
+                                    <span>3. Impor Data & Struktur Tabel MySQL</span>
+                                </div>
+                                <span class="badge badge-secondary restore-step-badge">Menunggu</span>
+                            </div>
+                            <div class="restore-step-row" id="restore-step-4">
+                                <div class="restore-step-left">
+                                    <i class="ph ph-circle-dashed restore-step-icon"></i>
+                                    <span>4. Finalisasi & Verifikasi Integritas</span>
+                                </div>
+                                <span class="badge badge-secondary restore-step-badge">Menunggu</span>
+                            </div>
+                        </div>
+
+                        <div class="restore-log-ticker" id="restore-log-ticker">
+                            [System] Memulai eksekusi runner restore_simpadu.php...
+                        </div>
+                    </div>
+
+                    <!-- Hasil Selesai Restore -->
+                    <div id="restore-result-container" style="display: none; text-align: center; padding: 1.5rem 0.5rem;">
+                        <div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(16, 185, 129, 0.15); border: 2px solid #10b981; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; font-size: 2rem; color: #10b981; box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);">
+                            <i class="ph ph-check"></i>
+                        </div>
+                        <h3 style="color: #fff; font-size: 1.25rem; margin-bottom: 0.5rem;" id="restore-result-title">Pemulihan Berhasil!</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.5rem;" id="restore-result-message">
+                            Database simpadu berhasil dipulihkan secara penuh ke kondisi semula.
+                        </p>
+                        <button type="button" class="btn btn-primary" id="btn-close-restore-success" style="width: 100%;">
+                            <i class="ph ph-check-circle"></i> Selesai & Tutup
+                        </button>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
-    <script src="app.js?v=9"></script>
+    <script src="app.js?v=35"></script>
 </body>
 </html>

@@ -18,7 +18,7 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
-    $periode = '202512';
+    $periode = '202409';
     $year = intval(substr($periode, 0, 4));
     $month = intval(substr($periode, 4, 2)) + 1;
     if ($month > 12) { $month = 1; $year++; }
@@ -37,13 +37,31 @@ try {
     ");
 
     $t1 = microtime(true);
+    // 1a. Tunggakan Reguler / Non-YKK (IS_YKK = 0): Semua yang belum lunas LANGSUNG DIELIMINASI
     $pdo->exec("
         INSERT IGNORE INTO tmp_eliminasi (no_pdam, alasan)
-        SELECT no_pdam, 'Tunggakan' FROM spd_tunggak c 
+        SELECT no_pdam, 'Tunggakan' 
+        FROM spd_tunggak c 
         WHERE c.IS_DELETE = 0 AND c.IS_YKK = 0 AND c.LUNAS = 0 AND (c.PH IS NULL OR c.PH != 'P');
     ");
+    // 1b. Tunggakan YKK (IS_YKK = 1): Maksimal 3 bulan ditoleransi, jika > 3 bulan DIELIMINASI
+    $pdo->exec("
+        INSERT IGNORE INTO tmp_eliminasi (no_pdam, alasan)
+        SELECT no_pdam, 'Tunggakan YKK >3 Bln' 
+        FROM spd_tunggak c USE INDEX(LUNAS)
+        WHERE c.IS_DELETE = 0 AND c.IS_YKK = 1 AND c.LUNAS = 0
+        GROUP BY no_pdam
+        HAVING COUNT(*) > 3;
+    ");
+    // 1c. Tunggakan YKK dengan Status Penghapusan (PH = 'P')
+    $pdo->exec("
+        INSERT IGNORE INTO tmp_eliminasi (no_pdam, alasan)
+        SELECT no_pdam, 'Tunggakan PH' 
+        FROM spd_tunggak c USE INDEX(IS_YKK)
+        WHERE c.IS_DELETE = 0 AND c.IS_YKK = 1 AND c.PH = 'P';
+    ");
     $t2 = microtime(true);
-    echo "   -> Tunggakan : " . round($t2 - $t1, 3) . "s\n";
+    echo "   -> Tunggakan (Reguler + YKK>3Bln + PH): " . round($t2 - $t1, 3) . "s\n";
 
     $stmtBon = $pdo->prepare("
         INSERT IGNORE INTO tmp_eliminasi (no_pdam, alasan)
