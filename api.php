@@ -619,8 +619,8 @@ if ($action === 'beli' || $action === 'batal') {
         }
 
         $elapsedSeconds = $startTime ? (time() - strtotime($startTime)) : 0;
-        $isReallyActive = $isBackupProcessAlive || $isWriting || (!empty($activeQuery) && !empty($startTime) && $elapsedSeconds < 7200);
-        if ($isBackupProcessAlive) {
+        $isReallyActive = ($isBackupProcessAlive || $isWriting) && (!empty($activeFilename) || !empty($startTime));
+        if ($isBackupProcessAlive && $isReallyActive) {
             $isFinished = false;
         }
 
