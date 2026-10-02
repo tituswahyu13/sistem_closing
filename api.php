@@ -782,21 +782,30 @@ if ($action === 'beli' || $action === 'batal') {
 
         $elapsedSeconds = $startTime ? (time() - strtotime($startTime)) : 0;
         
-        // Hitung estimasi persentase progres dinamis impor database (0% - 100%)
+        // Hitung estimasi persentase progres dinamis impor database (0% - 100%) dan jumlah baris data
         $dynamicPercent = 0;
         $importedTablesCount = 0;
         $totalEstimatedTables = 89;
+        $importedRowsCount = 0;
+        $totalEstimatedRows = 23057050; // Total estimasi baris database SIMPADU utuh (23.05M Baris)
 
         try {
-            $stmtTb = $pdo->prepare("SELECT COUNT(*) AS total FROM information_schema.TABLES WHERE TABLE_SCHEMA = :targetDb");
+            $stmtTb = $pdo->prepare("SELECT COUNT(*) AS total_tables, SUM(TABLE_ROWS) AS total_rows FROM information_schema.TABLES WHERE TABLE_SCHEMA = :targetDb");
             $stmtTb->execute(['targetDb' => $targetDbName]);
             $tbRow = $stmtTb->fetch(PDO::FETCH_ASSOC);
-            $importedTablesCount = intval($tbRow['total'] ?? 0);
+            $importedTablesCount = intval($tbRow['total_tables'] ?? 0);
+            $importedRowsCount = intval($tbRow['total_rows'] ?? 0);
         } catch (Exception $e) {
             $importedTablesCount = 0;
+            $importedRowsCount = 0;
         }
 
-        if ($importedTablesCount > 0) {
+        $rowsProgressPct = $totalEstimatedRows > 0 ? min(99, round(($importedRowsCount / $totalEstimatedRows) * 100, 1)) : 0;
+        $rowsFormatted = number_format($importedRowsCount, 0, ',', '.') . ' / ' . number_format($totalEstimatedRows, 0, ',', '.') . ' Baris';
+
+        if ($importedRowsCount > 0) {
+            $dynamicPercent = min(98, max(30, round(($importedRowsCount / $totalEstimatedRows) * 98)));
+        } elseif ($importedTablesCount > 0) {
             $tableProgress = min(70, round(($importedTablesCount / $totalEstimatedTables) * 70));
             $dynamicPercent = min(98, 25 + $tableProgress);
             if ($dynamicPercent < 30) $dynamicPercent = 30;
@@ -823,6 +832,10 @@ if ($action === 'beli' || $action === 'batal') {
             "is_finished" => $isFinished,
             "finish_duration" => $finishDuration,
             "percent" => $dynamicPercent,
+            "imported_rows" => $importedRowsCount,
+            "total_rows" => $totalEstimatedRows,
+            "rows_formatted" => $rowsFormatted,
+            "rows_percent" => $rowsProgressPct,
             "imported_tables" => $importedTablesCount,
             "total_tables" => $totalEstimatedTables,
             "source_file" => $sourceFile,

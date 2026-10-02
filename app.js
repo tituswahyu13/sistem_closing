@@ -1411,8 +1411,9 @@ async function checkAndRenderRestoreStatus() {
                 const pctVal = json.percent !== undefined ? json.percent : 85;
                 const pctStr = `${pctVal}%`;
                 const tablesInfo = json.imported_tables ? `${json.imported_tables}/${json.total_tables || 89} Tabel` : '';
+                const rowsInfo = json.rows_formatted || tablesInfo;
 
-                if (phaseTitle) phaseTitle.innerHTML = `<span class="pipeline-radar-pulse" style="background: #ef4444; box-shadow: 0 0 10px #ef4444;"></span> Pemulihan Database: <span style="color: #fff; font-family: monospace;">${json.source_file || 'simpadu'}</span> <small style="color: #fca5a5; font-weight: normal;">(${tablesInfo ? tablesInfo + ' - ' : ''}${pctStr})</small>`;
+                if (phaseTitle) phaseTitle.innerHTML = `<span class="pipeline-radar-pulse" style="background: #ef4444; box-shadow: 0 0 10px #ef4444;"></span> Pemulihan Database: <span style="color: #fff; font-family: monospace;">${json.source_file || 'simpadu'}</span> <small style="color: #fca5a5; font-weight: normal;">(${rowsInfo ? rowsInfo + ' - ' : ''}${pctStr})</small>`;
                 
                 // Step 1: Safety Snapshot
                 if (json.has_safety_snapshot) {
@@ -1429,10 +1430,10 @@ async function checkAndRenderRestoreStatus() {
                 }
 
                 // Step 3: Impor MySQL
-                if (json.active_table || json.imported_tables > 0) {
-                    updatePageRestoreStepUI(3, 'RUNNING', tablesInfo || `Tabel: ${json.active_table}`);
+                if (json.active_table || json.imported_tables > 0 || json.imported_rows > 0) {
+                    updatePageRestoreStepUI(3, 'RUNNING', rowsInfo || `Tabel: ${json.active_table}`);
                     const desc3 = document.getElementById('page-restore-desc-3');
-                    if (desc3) desc3.innerHTML = json.active_table ? `Mengisi tabel <code>${json.active_table}</code> (${tablesInfo})` : `Mengimpor struktur & data (${tablesInfo})`;
+                    if (desc3) desc3.innerHTML = json.active_table ? `Mengisi tabel <code>${json.active_table}</code> (${rowsInfo})` : `Mengimpor struktur & data (${rowsInfo})`;
                 } else {
                     updatePageRestoreStepUI(3, 'RUNNING', 'Memproses...');
                 }
@@ -1446,7 +1447,7 @@ async function checkAndRenderRestoreStatus() {
 
                 if (tableBadge) {
                     tableBadge.className = 'badge badge-info';
-                    tableBadge.textContent = json.active_table ? `Tabel: ${json.active_table} (${tablesInfo})` : (tablesInfo || 'Memproses...');
+                    tableBadge.textContent = json.active_table ? `Tabel: ${json.active_table} (${rowsInfo})` : (rowsInfo || 'Memproses...');
                 }
 
                 if (pctEl) { pctEl.textContent = pctStr; pctEl.style.color = '#fca5a5'; }
