@@ -16,8 +16,9 @@ function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
 
     $backupDir = __DIR__ . '/backups';
     if (!is_dir($backupDir)) {
-        mkdir($backupDir, 0755, true);
+        @mkdir($backupDir, 0777, true);
     }
+    @chmod($backupDir, 0777);
     $pidFile = "{$backupDir}/.backup.pid";
     file_put_contents($pidFile, getmypid());
     register_shutdown_function(function() use ($pidFile) {
@@ -92,14 +93,23 @@ function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
         }
     }
 
+    // Deteksi apakah mysqldump mendukung --column-statistics (MySQL 8+ client vs MariaDB)
+    $colStatOpt = '';
+    $helpOut = [];
+    exec(escapeshellcmd($mysqldumpPath) . " --help 2>&1", $helpOut);
+    if (stripos(implode("\n", $helpOut), 'column-statistics') !== false) {
+        $colStatOpt = '--column-statistics=0';
+    }
+
     $passArg = $pass !== '' ? "-p" . escapeshellarg($pass) : '';
     $cmd = sprintf(
-        "%s -h %s -P %s -u %s %s --single-transaction --quick --routines --triggers --max-allowed-packet=512M --net-buffer-length=1M --column-statistics=0 %s 2>> %s | gzip -9 > %s",
+        "%s -h %s -P %s -u %s %s --single-transaction --quick --routines --triggers --max-allowed-packet=512M --net-buffer-length=1M %s %s 2>> %s | gzip -9 > %s",
         escapeshellcmd($mysqldumpPath),
         escapeshellarg($host),
         escapeshellarg($port),
         escapeshellarg($user),
         $passArg,
+        $colStatOpt,
         escapeshellarg($db),
         escapeshellarg($logFile),
         escapeshellarg($backupFile)

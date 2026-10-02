@@ -398,7 +398,11 @@ if ($action === 'beli' || $action === 'batal') {
         $retentionDays = 14;
 
         if (is_dir($backupDir)) {
-            $rawFiles = glob("{$backupDir}/*.sql.gz");
+            $rawFiles = array_unique(array_merge(
+                glob("{$backupDir}/*.sql.gz") ?: [],
+                glob("{$backupDir}/*.sql") ?: [],
+                glob("{$backupDir}/*.gz") ?: []
+            ));
             if ($rawFiles) {
                 // Sort newest first
                 usort($rawFiles, function($a, $b) {
