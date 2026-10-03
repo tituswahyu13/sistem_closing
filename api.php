@@ -775,14 +775,14 @@ if ($action === 'beli' || $action === 'batal') {
         $isRestoreProcessAlive = false;
         if (file_exists($restorePidFile)) {
             $pid = intval(trim(file_get_contents($restorePidFile)));
-            if ($pid > 0) {
+            if ($pid > 0 && $pid !== getmypid()) {
                 if (file_exists("/proc/$pid")) {
                     $isRestoreProcessAlive = true;
                 } elseif (function_exists('posix_kill')) {
                     $isRestoreProcessAlive = @posix_kill($pid, 0);
                 } else {
-                    exec("ps -p $pid 2>/dev/null", $psOut, $psCode);
-                    $isRestoreProcessAlive = ($psCode === 0 && count($psOut) > 1);
+                    exec("ps -p $pid -o pid= 2>/dev/null", $psOut, $psCode);
+                    $isRestoreProcessAlive = ($psCode === 0 && !empty($psOut) && intval(trim($psOut[0])) === $pid);
                 }
             }
             if (!$isRestoreProcessAlive) {
@@ -790,7 +790,7 @@ if ($action === 'beli' || $action === 'batal') {
             }
         }
         if (!$isRestoreProcessAlive) {
-            exec("pgrep -f 'restore_simpadu.php|gunzip.*mysql' 2>/dev/null", $pgOut, $pgCode);
+            exec("ps aux 2>/dev/null | grep -E '[r]estore_simpadu.php|[g]unzip.*mysql' | grep -v 'grep'", $pgOut, $pgCode);
             $isRestoreProcessAlive = ($pgCode === 0 && !empty($pgOut));
         }
 
