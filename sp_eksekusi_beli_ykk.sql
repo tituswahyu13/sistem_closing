@@ -231,6 +231,13 @@ proc: BEGIN
     IF in_dry_run = 0 THEN
         START TRANSACTION;
 
+        -- 0. Bersihkan transaksi YKK periode ini jika dieksekusi ulang (Idempotent)
+        DELETE FROM spd_tunggak 
+        WHERE REKENING_BULAN = v_rekening_bulan AND IS_YKK = 1;
+
+        DELETE FROM spd_tagrek 
+        WHERE REKENING_BULAN = in_periode AND IS_YKK = 1 AND TANGGAL = v_tanggal_bayar;
+
         -- A. Bulk Insert ke SPD_TUNGGAK (Tunggakan YKK Baru, LUNAS=0)
         INSERT INTO spd_tunggak (
             REKENING_BULAN, NO_PDAM, STLGN_ID, LOKBAY_ID, STGOL_ID,

@@ -237,9 +237,12 @@ if ($action === 'beli' || $action === 'batal') {
                 (a.HARGA + a.NON_AIR + COALESCE(a.MATERAI, 0) + COALESCE(t.DENDA, 0)) AS TOTAL_BAYAR
             FROM spd_tagrek a 
             JOIN spd_stlgn b ON b.ID = a.STLGN_ID
-            LEFT JOIN spd_tunggak t ON t.NO_PDAM = a.NO_PDAM 
-                AND t.IS_YKK = 1 
-                AND t.IS_DELETE = '0'
+            LEFT JOIN (
+                SELECT NO_PDAM, REKENING_BULAN, MAX(DENDA) AS DENDA
+                FROM spd_tunggak 
+                WHERE IS_YKK = 1 AND IS_DELETE = '0'
+                GROUP BY NO_PDAM, REKENING_BULAN
+            ) t ON t.NO_PDAM = a.NO_PDAM 
                 AND t.REKENING_BULAN = CONCAT(LEFT(a.REKENING_BULAN, 4), '-', SUBSTRING(a.REKENING_BULAN, 5, 2), '-20')
             WHERE $whereClause
             ORDER BY a.NO_PDAM ASC
