@@ -643,20 +643,22 @@ if ($action === 'beli' || $action === 'batal') {
         $isBackupProcessAlive = false;
         if (file_exists($backupPidFile)) {
             $pid = intval(trim(file_get_contents($backupPidFile)));
-            if ($pid > 0) {
-                $isBackupProcessAlive = function_exists('posix_kill') ? @posix_kill($pid, 0) : true;
+            if ($pid > 0 && function_exists('posix_kill')) {
+                $isBackupProcessAlive = @posix_kill($pid, 0);
+            }
+            if (!$isBackupProcessAlive && !$isWriting) {
+                @unlink($backupPidFile);
             }
         }
-        if (!$isBackupProcessAlive) {
-            exec("pgrep -f 'backup_simpadu.php|mysqldump' 2>/dev/null", $pgOut, $pgCode);
-            $isBackupProcessAlive = ($pgCode === 0 && !empty($pgOut));
+
+        // Cek log apakah backup sudah selesai
+        if ($isFinished || (!$isBackupProcessAlive && !$isWriting && $currentSizeMb > 10)) {
+            $isReallyActive = false;
+        } else {
+            $isReallyActive = ($isBackupProcessAlive || $isWriting) && (!empty($activeFilename) || !empty($startTime));
         }
 
         $elapsedSeconds = $startTime ? (time() - strtotime($startTime)) : 0;
-        $isReallyActive = ($isBackupProcessAlive || $isWriting) && (!empty($activeFilename) || !empty($startTime));
-        if ($isBackupProcessAlive && $isReallyActive) {
-            $isFinished = false;
-        }
 
         echo json_encode([
             "status" => "success",
@@ -668,8 +670,8 @@ if ($action === 'beli' || $action === 'batal') {
             "current_size_mb" => $currentSizeMb,
             "estimated_total_mb" => $refSizeMb,
             "percent" => $pct,
-            "active_table" => $activeTable,
-            "query_snippet" => $querySnippet,
+            "active_table" => $isReallyActive ? $activeTable : null,
+            "query_snippet" => $isReallyActive ? $querySnippet : null,
             "last_log" => $lastLog,
             "timestamp" => date('H:i:s')
         ]);
@@ -946,6 +948,13 @@ if ($action === 'beli' || $action === 'batal') {
         require_once __DIR__ . '/pipeline_runner.php';
         initPipelineLogTable($pdo);
 
+        // Auto-resolve batch pipeline yang menggantung (> 15 menit tanpa aktivitas)
+        $pdo->exec("
+            UPDATE pipeline_log 
+            SET status = 'FAILED', pesan = 'Dihentikan oleh sistem / Timeout', waktu_selesai = NOW()
+            WHERE status = 'RUNNING' AND TIMESTAMPDIFF(MINUTE, waktu_mulai, NOW()) > 15
+        ");
+
         $limit = intval($_GET['limit'] ?? 50);
         $stmt = $pdo->prepare("
             SELECT * FROM pipeline_log 
@@ -958,6 +967,7 @@ if ($action === 'beli' || $action === 'batal') {
 
         // Group by batch_id
         $batches = [];
+        $hasActiveBatch = false;
         foreach ($logs as $row) {
             $bId = $row['batch_id'];
             if (!isset($batches[$bId])) {
@@ -971,62 +981,68 @@ if ($action === 'beli' || $action === 'batal') {
             }
             if ($row['status'] === 'FAILED') {
                 $batches[$bId]['status'] = 'FAILED';
+            } elseif ($row['status'] === 'RUNNING') {
+                $batches[$bId]['status'] = 'RUNNING';
+                $hasActiveBatch = true;
             }
             $batches[$bId]['steps'][] = $row;
         }
 
         // Cek progres realtime pencadangan database (Tahap 1)
         $activeBackup = null;
-        $backupDir = __DIR__ . '/backups';
-        if (is_dir($backupDir)) {
-            $files = glob($backupDir . '/simpadu_*.sql.gz');
-            if ($files) {
-                usort($files, function($a, $b) { return filemtime($b) - filemtime($a); });
-                $latestFile = $files[0];
-                $mtime = filemtime($latestFile);
-                $sizeBytes = filesize($latestFile);
-                $sizeMb = round($sizeBytes / (1024 * 1024), 2);
-                
-                // Cari estimasi ukuran referensi dari file backup sukses sebelumnya
-                $refSizeMb = 492.0;
-                foreach ($files as $f) {
-                    $sz = round(filesize($f) / (1024 * 1024), 2);
-                    if ($f !== $latestFile && $sz > 50) {
-                        $refSizeMb = $sz;
-                        break;
+        if ($hasActiveBatch) {
+            $backupDir = __DIR__ . '/backups';
+            if (is_dir($backupDir)) {
+                $files = glob($backupDir . '/simpadu_*.sql.gz');
+                if ($files) {
+                    usort($files, function($a, $b) { return filemtime($b) - filemtime($a); });
+                    $latestFile = $files[0];
+                    $mtime = filemtime($latestFile);
+                    $sizeBytes = filesize($latestFile);
+                    $sizeMb = round($sizeBytes / (1024 * 1024), 2);
+                    
+                    $refSizeMb = 492.0;
+                    foreach ($files as $f) {
+                        $sz = round(filesize($f) / (1024 * 1024), 2);
+                        if ($f !== $latestFile && $sz > 50) {
+                            $refSizeMb = $sz;
+                            break;
+                        }
                     }
+
+                    $isWriting = (time() - $mtime) < 30;
+                    $pct = min(100, round(($sizeMb / $refSizeMb) * 100));
+
+                    $activeBackup = [
+                        'is_writing' => $isWriting,
+                        'filename' => basename($latestFile),
+                        'current_size_mb' => $sizeMb,
+                        'estimated_total_mb' => $refSizeMb,
+                        'percent' => $pct,
+                        'display_text' => "$sizeMb MB / ~$refSizeMb MB ($pct%)"
+                    ];
                 }
-
-                $isWriting = (time() - $mtime) < 45;
-                $pct = min(100, round(($sizeMb / $refSizeMb) * 100));
-
-                $activeBackup = [
-                    'is_writing' => $isWriting,
-                    'filename' => basename($latestFile),
-                    'current_size_mb' => $sizeMb,
-                    'estimated_total_mb' => $refSizeMb,
-                    'percent' => $pct,
-                    'display_text' => "$sizeMb MB / ~$refSizeMb MB ($pct%)"
-                ];
             }
         }
 
-        // Cek query aktif di MySQL server untuk pipeline
+        // Cek query aktif di MySQL server HANYA jika pipeline aktif berjalan
         $activeQuery = null;
         $activeTable = null;
         $querySnippet = null;
 
-        $stmt = $pdo->query("SHOW FULL PROCESSLIST");
-        $processes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($processes as $p) {
-            $info = trim($p['Info'] ?? '');
-            if (!empty($info) && stripos($info, 'SHOW FULL PROCESSLIST') === false && stripos($info, 'ykk_config') === false) {
-                if (preg_match('/(?:FROM|TABLE|INTO|UPDATE|CALL)\s+[`\'"]?([a-zA-Z0-9_\.]+)[`\'"]?/i', $info, $matches)) {
-                    $activeTable = $matches[1];
+        if ($hasActiveBatch) {
+            $stmt = $pdo->query("SHOW FULL PROCESSLIST");
+            $processes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($processes as $p) {
+                $info = trim($p['Info'] ?? '');
+                if (!empty($info) && stripos($info, 'SHOW FULL PROCESSLIST') === false && stripos($info, 'ykk_config') === false) {
+                    if (preg_match('/(?:FROM|TABLE|INTO|UPDATE|CALL)\s+[`\'"]?([a-zA-Z0-9_\.]+)[`\'"]?/i', $info, $matches)) {
+                        $activeTable = $matches[1];
+                    }
+                    $activeQuery = $info;
+                    $querySnippet = substr($info, 0, 140) . (strlen($info) > 140 ? '...' : '');
+                    break;
                 }
-                $activeQuery = $info;
-                $querySnippet = substr($info, 0, 140) . (strlen($info) > 140 ? '...' : '');
-                break;
             }
         }
 
