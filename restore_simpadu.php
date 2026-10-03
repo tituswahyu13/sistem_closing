@@ -7,6 +7,23 @@ date_default_timezone_set('Asia/Jakarta');
 set_time_limit(0);
 ini_set('memory_limit', '512M');
 
+// PHP 7 Compatibility Polyfills
+if (!function_exists('str_contains')) {
+    function str_contains($haystack, $needle) {
+        return $needle === '' || mb_strpos($haystack, $needle) !== false;
+    }
+}
+if (!function_exists('str_starts_with')) {
+    function str_starts_with($haystack, $needle) {
+        return (string)$needle !== '' && strncmp($haystack, $needle, strlen($needle)) === 0;
+    }
+}
+if (!function_exists('str_ends_with')) {
+    function str_ends_with($haystack, $needle) {
+        return $needle === '' || $needle === substr($haystack, -strlen($needle));
+    }
+}
+
 $envFile = __DIR__ . '/.env';
 $env = file_exists($envFile) ? parse_ini_file($envFile) : [];
 $host = !empty($env['DB_HOST']) ? $env['DB_HOST'] : '192.168.0.10';

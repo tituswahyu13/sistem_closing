@@ -5,6 +5,23 @@
 
 date_default_timezone_set('Asia/Jakarta');
 
+// PHP 7 Compatibility Polyfills
+if (!function_exists('str_contains')) {
+    function str_contains($haystack, $needle) {
+        return $needle === '' || mb_strpos($haystack, $needle) !== false;
+    }
+}
+if (!function_exists('str_starts_with')) {
+    function str_starts_with($haystack, $needle) {
+        return (string)$needle !== '' && strncmp($haystack, $needle, strlen($needle)) === 0;
+    }
+}
+if (!function_exists('str_ends_with')) {
+    function str_ends_with($haystack, $needle) {
+        return $needle === '' || $needle === substr($haystack, -strlen($needle));
+    }
+}
+
 function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
     $envFile = __DIR__ . '/.env';
     $env = file_exists($envFile) ? parse_ini_file($envFile) : [];
