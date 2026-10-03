@@ -2,6 +2,7 @@
 node_modules/
 
 # Environment Local Settings
+.env
 .env.local
 
 # Backups & Large SQL Dumps
