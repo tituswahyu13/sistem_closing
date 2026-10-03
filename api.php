@@ -505,9 +505,19 @@ if ($action === 'beli' || $action === 'batal') {
         $type = $input['type'] ?? ($_GET['type'] ?? 'MANUAL');
         $label = $input['label'] ?? ($_GET['label'] ?? '');
 
+        $possiblePhp = ['/usr/bin/php', '/usr/local/bin/php', (defined('PHP_BINARY') ? PHP_BINARY : '')];
+        $phpBinary = 'php';
+        foreach ($possiblePhp as $p) {
+            if (!empty($p) && is_executable($p) && !str_contains($p, 'fpm')) {
+                $phpBinary = $p;
+                break;
+            }
+        }
+
         $backupScript = __DIR__ . '/backup_simpadu.php';
         $cmd = sprintf(
-            "nohup php %s %s %s > /dev/null 2>&1 &",
+            "nohup %s %s %s %s > /dev/null 2>&1 &",
+            escapeshellcmd($phpBinary),
             escapeshellarg($backupScript),
             escapeshellarg($type),
             escapeshellarg($label)

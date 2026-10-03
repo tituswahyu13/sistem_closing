@@ -83,12 +83,21 @@ function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
     $writeLog("Memulai proses backup database '{$db}' (Tipe: {$normalizedType}, Periode: {$activePeriode})...");
     $writeLog("Host: {$host}:{$port} | User: {$user} | Target: {$backupFile}");
 
-    // Cari binary mysqldump
+    // Cari binary mysqldump & gzip
     $mysqldumpPath = 'mysqldump';
-    $possiblePaths = ['/opt/homebrew/bin/mysqldump', '/usr/local/bin/mysqldump', '/usr/bin/mysqldump'];
+    $possiblePaths = ['/usr/bin/mysqldump', '/usr/local/bin/mysqldump', '/opt/homebrew/bin/mysqldump'];
     foreach ($possiblePaths as $path) {
         if (file_exists($path) && is_executable($path)) {
             $mysqldumpPath = $path;
+            break;
+        }
+    }
+
+    $gzipPath = 'gzip';
+    $possibleGzip = ['/bin/gzip', '/usr/bin/gzip', '/usr/local/bin/gzip', '/opt/homebrew/bin/gzip'];
+    foreach ($possibleGzip as $path) {
+        if (file_exists($path) && is_executable($path)) {
+            $gzipPath = $path;
             break;
         }
     }
@@ -103,7 +112,7 @@ function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
 
     $passArg = $pass !== '' ? "-p" . escapeshellarg($pass) : '';
     $cmd = sprintf(
-        "%s -h %s -P %s -u %s %s --single-transaction --quick --routines --triggers --max-allowed-packet=512M --net-buffer-length=1M %s %s 2>> %s | gzip -9 > %s",
+        "%s -h %s -P %s -u %s %s --single-transaction --quick --routines --triggers --max-allowed-packet=512M --net-buffer-length=1M %s %s 2>> %s | %s -9 > %s",
         escapeshellcmd($mysqldumpPath),
         escapeshellarg($host),
         escapeshellarg($port),
@@ -112,6 +121,7 @@ function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
         $colStatOpt,
         escapeshellarg($db),
         escapeshellarg($logFile),
+        escapeshellcmd($gzipPath),
         escapeshellarg($backupFile)
     );
 
@@ -166,7 +176,7 @@ function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
 }
 
 // Jika dieksekusi langsung via CLI / Web
-if (isset($_SERVER['SCRIPT_FILENAME']) && realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILENAME'])) {
+if (php_sapi_name() === 'cli' || (isset($_SERVER['SCRIPT_FILENAME']) && realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILENAME']))) {
     $typeArg = $argv[1] ?? ($_GET['type'] ?? 'MANUAL');
     $labelArg = $argv[2] ?? ($_GET['label'] ?? '');
     $res = executeBackup($typeArg, $labelArg);
