@@ -848,7 +848,13 @@ if ($action === 'beli' || $action === 'batal') {
         $rowsProgressPct = $effectiveTarget > 0 ? min(99, round(($importedRowsCount / $effectiveTarget) * 100, 1)) : 0;
         $rowsFormatted = number_format($importedRowsCount, 0, ',', '.') . ' / ' . number_format($effectiveTarget, 0, ',', '.') . ' Baris';
 
-        if ($importedRowsCount > 0) {
+        if (!$hasSafetySnapshot && empty($activeQuery)) {
+            // Masih dalam Tahap 1: Safety Snapshot (0% - 25%)
+            $dynamicPercent = min(25, max(5, round(($elapsedSeconds / 180) * 25)));
+            $rowsFormatted = 'Membuat Safety Snapshot...';
+            $rowsProgressPct = $dynamicPercent;
+        } elseif ($importedRowsCount > 0 && ($hasSafetySnapshot || !empty($activeQuery))) {
+            // Tahap 3: Impor Data MySQL (25% - 98%)
             $dynamicPercent = min(98, max(30, round(($importedRowsCount / $effectiveTarget) * 98)));
         } elseif ($importedTablesCount > 0) {
             $tableProgress = min(70, round(($importedTablesCount / $totalEstimatedTables) * 70));
@@ -856,6 +862,7 @@ if ($action === 'beli' || $action === 'batal') {
             if ($dynamicPercent < 30) $dynamicPercent = 30;
         } elseif ($hasSafetySnapshot) {
             $dynamicPercent = 25;
+            $rowsFormatted = 'Dekompresi arsip .sql.gz...';
         } else {
             $dynamicPercent = min(25, max(5, round(($elapsedSeconds / 300) * 25)));
         }

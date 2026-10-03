@@ -1412,17 +1412,23 @@ async function checkAndRenderRestoreStatus() {
                 }
 
                 // Step 2: Dekompresi
-                if (json.active_table || json.has_safety_snapshot) {
+                if (json.has_safety_snapshot && (json.active_table || pctVal > 25)) {
                     updatePageRestoreStepUI(2, 'SUCCESS', 'Dekompresi Selesai');
+                } else if (json.has_safety_snapshot) {
+                    updatePageRestoreStepUI(2, 'RUNNING', 'Mengekstrak...');
                 } else {
                     updatePageRestoreStepUI(2, 'STANDBY', 'Menunggu');
                 }
 
                 // Step 3: Impor MySQL
-                if (json.active_table || json.imported_tables > 0 || json.imported_rows > 0) {
+                if (json.has_safety_snapshot && (json.active_table || json.imported_tables > 0 || json.imported_rows > 0)) {
                     updatePageRestoreStepUI(3, 'RUNNING', rowsInfo || `Tabel: ${json.active_table}`);
                     const desc3 = document.getElementById('page-restore-desc-3');
                     if (desc3) desc3.innerHTML = json.active_table ? `Mengisi tabel <code>${json.active_table}</code> (${rowsInfo})` : `Mengimpor struktur & data (${rowsInfo})`;
+                } else if (!json.has_safety_snapshot) {
+                    updatePageRestoreStepUI(3, 'STANDBY', 'Menunggu');
+                    const desc3 = document.getElementById('page-restore-desc-3');
+                    if (desc3) desc3.textContent = 'Injeksi skema, tabel, rutin & data.';
                 } else {
                     updatePageRestoreStepUI(3, 'RUNNING', 'Memproses...');
                 }
