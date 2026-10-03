@@ -866,6 +866,8 @@ if ($action === 'beli' || $action === 'batal') {
             "active_table" => $activeTable,
             "query_snippet" => $querySnippet,
             "last_log" => $lastLog,
+            "debug_alive" => $isRestoreProcessAlive,
+            "debug_pgout" => $pgOut ?? [],
             "timestamp" => date('H:i:s')
         ]);
     } catch (Exception $e) {
