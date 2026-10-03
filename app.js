@@ -194,7 +194,8 @@ const budgetSummaryText = document.getElementById('budget-summary-text');
 const toggleOnlyKuota = document.getElementById('toggle-only-kuota');
 
 // Automation Elements
-const otomasiSection = document.getElementById('otomasi-section');
+const otomasiSection = document.getElementById('pipeline-section') || document.getElementById('otomasi-section');
+const pipelineSection = document.getElementById('pipeline-section');
 const mainTablePanel = document.querySelector('.main-table-panel') || document.querySelector('.table-container');
 const statsGrid = document.querySelector('.stats-grid');
 const queryContainerPanel = document.getElementById('query-container-panel');
@@ -648,29 +649,44 @@ function showEmptyState() {
 function switchTab(tabId) {
     currentTab = tabId;
     
-    // Update Active Class
+    // Update Active Class on Sidebar
     navItems.forEach(btn => btn.classList.remove('active'));
     const activeNav = document.querySelector(`[data-tab="${tabId}"]`);
     if (activeNav) activeNav.classList.add('active');
     
+    // Always stop background pollers when leaving pipeline/backup tabs
+    if (tabId !== 'pipeline' && tabId !== 'otomasi') {
+        stopPipelineTabAutoPoller();
+    }
+    if (tabId !== 'backup') {
+        stopBackupTabAutoPoller();
+    }
+
     const tableContainer = document.querySelector('.table-container');
+    const pipelineSec = document.getElementById('pipeline-section');
+    const backupSec = document.getElementById('backup-section');
     
-    // Update Title and UI Elements
+    // Reset all major section visibility
+    if (pipelineSec) pipelineSec.style.display = (tabId === 'pipeline' || tabId === 'otomasi') ? 'block' : 'none';
+    if (backupSec) backupSec.style.display = (tabId === 'backup') ? 'block' : 'none';
+    
+    const isTableTab = (tabId === 'beli' || tabId === 'batal' || tabId === 'dibeli');
+    if (tableContainer) tableContainer.style.display = isTableTab ? 'block' : 'none';
+    if (statsGrid) statsGrid.style.display = isTableTab ? 'grid' : 'none';
+    if (queryContainerPanel) queryContainerPanel.style.display = isTableTab ? 'block' : 'none';
+
+    // Update Title and UI Elements per Tab
     if (tabId === 'beli') {
         pageTitle.textContent = 'Rencana Beli YKK';
         if (thAlasan) thAlasan.style.display = 'none';
         if (thTglBayar) thTglBayar.style.display = 'none';
         if (thDenda) thDenda.style.display = 'none';
+        if (thKuota) thKuota.style.display = 'none';
         if (statCardAlasan) statCardAlasan.style.display = 'none';
-        budgetPanel.style.display = 'flex';
-        statsGrid.style.display = 'grid';
-        if (tableContainer) tableContainer.style.display = 'block';
-        if (otomasiSection) otomasiSection.style.display = 'none';
-        if (backupSection) backupSection.style.display = 'none';
-        if (queryContainerPanel) queryContainerPanel.style.display = 'block';
+        if (budgetPanel) budgetPanel.style.display = 'flex';
         if (maxBudget > 0 && currentData.length > 0) {
-            statCardSisa.style.display = 'flex';
-            budgetProgressSection.style.display = 'flex';
+            if (statCardSisa) statCardSisa.style.display = 'flex';
+            if (budgetProgressSection) budgetProgressSection.style.display = 'flex';
         }
         showEmptyState();
         updatePeriodeUI();
@@ -679,15 +695,10 @@ function switchTab(tabId) {
         if (thAlasan) thAlasan.style.display = 'table-cell';
         if (thTglBayar) thTglBayar.style.display = 'none';
         if (thDenda) thDenda.style.display = 'none';
-        if (statCardAlasan) statCardAlasan.style.display = 'flex';
-        budgetPanel.style.display = 'none';
-        statCardSisa.style.display = 'none';
-        statsGrid.style.display = 'grid';
-        if (tableContainer) tableContainer.style.display = 'block';
-        if (otomasiSection) otomasiSection.style.display = 'none';
-        if (backupSection) backupSection.style.display = 'none';
-        if (queryContainerPanel) queryContainerPanel.style.display = 'block';
         if (thKuota) thKuota.style.display = 'none';
+        if (statCardAlasan) statCardAlasan.style.display = 'flex';
+        if (statCardSisa) statCardSisa.style.display = 'none';
+        if (budgetPanel) budgetPanel.style.display = 'none';
         showEmptyState();
         updatePeriodeUI();
     } else if (tabId === 'dibeli') {
@@ -695,43 +706,21 @@ function switchTab(tabId) {
         if (thAlasan) thAlasan.style.display = 'none';
         if (thTglBayar) thTglBayar.style.display = 'table-cell';
         if (thDenda) thDenda.style.display = 'table-cell';
-        if (statCardAlasan) statCardAlasan.style.display = 'none';
-        budgetPanel.style.display = 'none';
-        statCardSisa.style.display = 'none';
-        statsGrid.style.display = 'grid';
-        if (tableContainer) tableContainer.style.display = 'block';
-        if (otomasiSection) otomasiSection.style.display = 'none';
-        if (backupSection) backupSection.style.display = 'none';
-        if (queryContainerPanel) queryContainerPanel.style.display = 'block';
         if (thKuota) thKuota.style.display = 'none';
+        if (statCardAlasan) statCardAlasan.style.display = 'none';
+        if (statCardSisa) statCardSisa.style.display = 'none';
+        if (budgetPanel) budgetPanel.style.display = 'none';
         showEmptyState();
-        stopPipelineTabAutoPoller();
-        stopBackupTabAutoPoller();
+        updatePeriodeUI();
     } else if (tabId === 'pipeline' || tabId === 'otomasi') {
         pageTitle.textContent = 'Master Closing Pipeline (6-Tahap Otomasi)';
-        budgetPanel.style.display = 'none';
-        statsGrid.style.display = 'none';
-        if (tableContainer) tableContainer.style.display = 'none';
-        if (backupSection) backupSection.style.display = 'none';
-        const pipelineSection = document.getElementById('pipeline-section');
-        if (pipelineSection) pipelineSection.style.display = 'block';
-        if (queryContainerPanel) queryContainerPanel.style.display = 'none';
-        
-        stopBackupTabAutoPoller();
+        if (budgetPanel) budgetPanel.style.display = 'none';
         loadAutomationConfig();
         loadPipelineLogs();
         startPipelineTabAutoPoller();
     } else if (tabId === 'backup') {
         pageTitle.textContent = 'Pencadangan Database Otomatis';
-        budgetPanel.style.display = 'none';
-        statsGrid.style.display = 'none';
-        if (tableContainer) tableContainer.style.display = 'none';
-        const pipelineSection = document.getElementById('pipeline-section');
-        if (pipelineSection) pipelineSection.style.display = 'none';
-        if (backupSection) backupSection.style.display = 'block';
-        if (queryContainerPanel) queryContainerPanel.style.display = 'none';
-        
-        stopPipelineTabAutoPoller();
+        if (budgetPanel) budgetPanel.style.display = 'none';
         loadBackupData();
         startBackupTabAutoPoller();
         startNightlyBackupCountdown();
