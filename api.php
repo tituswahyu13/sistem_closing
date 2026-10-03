@@ -776,7 +776,17 @@ if ($action === 'beli' || $action === 'batal') {
         if (file_exists($restorePidFile)) {
             $pid = intval(trim(file_get_contents($restorePidFile)));
             if ($pid > 0) {
-                $isRestoreProcessAlive = function_exists('posix_kill') ? @posix_kill($pid, 0) : true;
+                if (file_exists("/proc/$pid")) {
+                    $isRestoreProcessAlive = true;
+                } elseif (function_exists('posix_kill')) {
+                    $isRestoreProcessAlive = @posix_kill($pid, 0);
+                } else {
+                    exec("ps -p $pid 2>/dev/null", $psOut, $psCode);
+                    $isRestoreProcessAlive = ($psCode === 0 && count($psOut) > 1);
+                }
+            }
+            if (!$isRestoreProcessAlive) {
+                @unlink($restorePidFile);
             }
         }
         if (!$isRestoreProcessAlive) {
@@ -820,13 +830,18 @@ if ($action === 'beli' || $action === 'batal') {
             $dynamicPercent = min(25, max(5, round(($elapsedSeconds / 300) * 25)));
         }
 
-        // Jika proses OS masih hidup, maka PASTI AKTIF dan BELUM FINISHED
+        // Jika proses OS masih hidup atau ada query aktif, maka proses berjalan
         if ($isRestoreProcessAlive) {
             $isReallyActive = true;
             $isFinished = false;
+        } elseif (!empty($activeQuery)) {
+            $isReallyActive = true;
+            $isFinished = false;
         } else {
-            $isReallyActive = !empty($activeQuery) && $elapsedSeconds < 7200;
-            if (!$isReallyActive && $isFinished) {
+            $isReallyActive = false;
+            // Jika tidak ada proses aktif lagi dan tabel sudah terisi penuh (89 tabel)
+            if ($importedTablesCount >= 85) {
+                $isFinished = true;
                 $dynamicPercent = 100;
             }
         }
