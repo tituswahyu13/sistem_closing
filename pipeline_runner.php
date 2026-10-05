@@ -415,6 +415,29 @@ function executeMasterPipeline($options = []) {
                 }
             }
 
+            // Cek Duplikasi SILANG (NO_PDAM & Periode sama ada di spd_tagrek DAN spd_tunggak)
+            $cekDupSilang = $pdo->prepare("
+                SELECT a.NO_PDAM, b.NAMA, a.REKENING_BULAN as periode, a.JUMLAH as tagihan_tagrek, t.JUMLAH as tagihan_tunggak
+                FROM spd_tagrek a
+                JOIN spd_tunggak t ON t.NO_PDAM = a.NO_PDAM 
+                    AND DATE_FORMAT(t.REKENING_BULAN, '%Y%m') = a.REKENING_BULAN
+                    AND t.LUNAS = 0 AND t.IS_DELETE = 0 AND t.PH IS NULL
+                JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+                JOIN spd_lokbay f ON f.ID = a.LOKBAY_ID
+                WHERE a.REKENING_BULAN = :periode_rek AND f.PPOB = 3 AND a.IS_DELETE = 0 AND a.IS_YKK = 0
+                GROUP BY a.NO_PDAM
+            ");
+            $cekDupSilang->execute(['periode_rek' => $periodeRekBulan]);
+            $dupSilangList = $cekDupSilang->fetchAll();
+
+            if (!empty($dupSilangList)) {
+                $log("   [PERINGATAN DUPLIKAT SILANG] Ditemukan " . count($dupSilangList) . " rekening sama di spd_tagrek & spd_tunggak:");
+                foreach (array_slice($dupSilangList, 0, 5) as $dup) {
+                    $log("     * NO_PDAM: {$dup['NO_PDAM']} ({$dup['NAMA']}) Periode {$dup['periode']} (Tagrek: Rp " . number_format($dup['tagihan_tagrek'], 0, ',', '.') . " vs Tunggak: Rp " . number_format($dup['tagihan_tunggak'], 0, ',', '.') . ")");
+                }
+                $log("     => Sistem otomatis memprioritaskan Tagihan Berjalan dan memfilter tunggakan kembar agar tidak masuk ganda ke PPOB.");
+            }
+
             // 4b. Truncate tabel pdam.ppob (DDL statement)
             $pdo->exec("TRUNCATE `pdam`.ppob");
             $log("   - Truncate tabel pdam.ppob selesai.");
@@ -470,7 +493,7 @@ function executeMasterPipeline($options = []) {
             $jmlPpobTagrek = $stmtPpob1->rowCount();
             $log("   - Insert Tagihan Berjalan ke pdam.ppob: $jmlPpobTagrek baris.");
 
-            // 4d. Insert Tunggakan dengan INSERT IGNORE & subquery agregasi rekang
+            // 4d. Insert Tunggakan dengan INSERT IGNORE, subquery agregasi rekang, & proteksi NOT EXISTS terhadap tagrek aktif
             $sqlPpobTunggak = "
             INSERT IGNORE INTO `pdam`.ppob
             SELECT 
@@ -513,6 +536,13 @@ function executeMasterPipeline($options = []) {
             ) f ON f.STLGN_ID = a.STLGN_ID
             JOIN spd_lokbay g ON g.ID = b.LOKBAY_ID
             WHERE a.LUNAS = 0 AND g.PPOB = 3 AND a.IS_DELETE = 0 AND a.PH IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM spd_tagrek tr
+                  WHERE tr.NO_PDAM = a.NO_PDAM
+                    AND tr.REKENING_BULAN = DATE_FORMAT(a.REKENING_BULAN, '%Y%m')
+                    AND tr.REKENING_BULAN = :periode_rek
+                    AND tr.IS_DELETE = 0 AND tr.IS_YKK = 0
+              )
             GROUP BY a.NO_PDAM, a.REKENING_BULAN
             ORDER BY a.REKENING_BULAN
             ";
@@ -526,13 +556,17 @@ function executeMasterPipeline($options = []) {
             }
             $t4_end = date('Y-m-d H:i:s');
             $msgPpob = "Transfer PPOB berhasil. Tagihan Berjalan: $jmlPpobTagrek, Tunggakan: $jmlPpobTunggak.";
+            if (!empty($dupSilangList)) {
+                $msgPpob .= " (Ditemukan " . count($dupSilangList) . " duplikat silang tagrek-tunggak, otomatis difilter).";
+            }
             $log("✓ $step4Name berhasil. $msgPpob");
 
             $duplicateSummary = [
                 'tagihan_berjalan' => $jmlPpobTagrek,
                 'tunggakan' => $jmlPpobTunggak,
                 'duplikat_tagrek_terdeteksi' => $dupTagrekList,
-                'duplikat_tunggak_terdeteksi' => $dupTunggakList
+                'duplikat_tunggak_terdeteksi' => $dupTunggakList,
+                'duplikat_silang_tagrek_tunggak' => $dupSilangList
             ];
 
             recordPipelineStep($pdo, $batchId, $periodeBerjalan, 4, $step4Name, 'SUCCESS', $t4_start, $t4_end, $msgPpob, $duplicateSummary);
