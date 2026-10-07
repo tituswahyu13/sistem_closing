@@ -2618,3 +2618,137 @@ if (testLoading === '1') {
     }, 300);
 }
 
+// ==========================================================================
+// Server Health & Resource Monitor (Topbar Capsule & Popover)
+// ==========================================================================
+let serverMetricsPoller = null;
+
+async function loadServerMetrics() {
+    try {
+        const res = await fetch('api.php?action=get_server_metrics');
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json.status !== 'success') return;
+
+        // Topbar Capsule Elements
+        const diskFreeEl = document.getElementById('metric-disk-free');
+        const diskBarEl = document.getElementById('metric-disk-bar');
+        const ramValEl = document.getElementById('metric-ram-val');
+        const ramBarEl = document.getElementById('metric-ram-bar');
+        const cpuValEl = document.getElementById('metric-cpu-val');
+        const cpuBarEl = document.getElementById('metric-cpu-bar');
+
+        if (json.disk) {
+            if (diskFreeEl) diskFreeEl.textContent = `${json.disk.free_gb} GB`;
+            if (diskBarEl) {
+                diskBarEl.style.width = `${json.disk.percent}%`;
+                diskBarEl.className = `metric-mini-fill ${json.disk.status_color || ''}`;
+            }
+        }
+
+        if (json.ram) {
+            if (ramValEl) ramValEl.innerHTML = `<strong>${json.ram.used_gb}</strong>/${json.ram.total_gb}G`;
+            if (ramBarEl) {
+                ramBarEl.style.width = `${json.ram.percent}%`;
+                ramBarEl.className = `metric-mini-fill ${json.ram.status_color || ''}`;
+            }
+        }
+
+        if (json.cpu) {
+            if (cpuValEl) cpuValEl.textContent = `${json.cpu.percent}%`;
+            if (cpuBarEl) {
+                cpuBarEl.style.width = `${json.cpu.percent}%`;
+                cpuBarEl.className = `metric-mini-fill ${json.cpu.status_color || ''}`;
+            }
+        }
+
+        // Popover Details
+        const popDiskUsed = document.getElementById('popover-disk-used');
+        const popDiskTotal = document.getElementById('popover-disk-total');
+        const popDiskBar = document.getElementById('popover-disk-bar');
+        const popDiskHint = document.getElementById('popover-disk-hint');
+
+        if (json.disk) {
+            if (popDiskUsed) popDiskUsed.textContent = `${json.disk.used_gb} GB`;
+            if (popDiskTotal) popDiskTotal.textContent = `dari ${json.disk.total_gb} GB`;
+            if (popDiskBar) {
+                popDiskBar.style.width = `${json.disk.percent}%`;
+                popDiskBar.className = `popover-progress-fill ${json.disk.status_color || ''}`;
+            }
+            if (popDiskHint) popDiskHint.textContent = `Sisa Bebas: ${json.disk.free_gb} GB (${(100 - json.disk.percent).toFixed(1)}% free)`;
+        }
+
+        const popRamUsed = document.getElementById('popover-ram-used');
+        const popRamTotal = document.getElementById('popover-ram-total');
+        const popRamBar = document.getElementById('popover-ram-bar');
+        const popRamHint = document.getElementById('popover-ram-hint');
+
+        if (json.ram) {
+            if (popRamUsed) popRamUsed.textContent = `${json.ram.used_gb} GB`;
+            if (popRamTotal) popRamTotal.textContent = `dari ${json.ram.total_gb} GB`;
+            if (popRamBar) {
+                popRamBar.style.width = `${json.ram.percent}%`;
+                popRamBar.className = `popover-progress-fill ${json.ram.status_color || ''}`;
+            }
+            if (popRamHint) popRamHint.textContent = `Tersedia Bebas: ${json.ram.free_gb} GB (${json.ram.percent}% used)`;
+        }
+
+        const popCpuVal = document.getElementById('popover-cpu-val');
+        const popCpuCores = document.getElementById('popover-cpu-cores');
+        const popCpuBar = document.getElementById('popover-cpu-bar');
+        const popCpuLoad = document.getElementById('popover-cpu-load');
+
+        if (json.cpu) {
+            if (popCpuVal) popCpuVal.textContent = `${json.cpu.percent}%`;
+            if (popCpuCores) popCpuCores.textContent = `${json.cpu.cores} Core${json.cpu.cores > 1 ? 's' : ''}`;
+            if (popCpuBar) {
+                popCpuBar.style.width = `${json.cpu.percent}%`;
+                popCpuBar.className = `popover-progress-fill ${json.cpu.status_color || ''}`;
+            }
+            if (popCpuLoad) popCpuLoad.textContent = `Load Avg: ${json.cpu.load_1m} / ${json.cpu.load_5m} / ${json.cpu.load_15m}`;
+        }
+
+        const popDbSize = document.getElementById('popover-db-size');
+        const popDbThreads = document.getElementById('popover-db-threads');
+        const popNetHint = document.getElementById('popover-net-hint');
+        const popDbUptime = document.getElementById('popover-db-uptime');
+        const popServerTime = document.getElementById('popover-server-time');
+
+        if (json.database) {
+            if (popDbSize) popDbSize.textContent = `DB: ${json.database.size_formatted}`;
+            if (popDbThreads) popDbThreads.textContent = `${json.database.threads_connected} Koneksi`;
+            if (popDbUptime) popDbUptime.textContent = `MySQL Uptime: ${json.database.uptime_hours} Jam`;
+        }
+
+        if (json.network && popNetHint) {
+            popNetHint.textContent = `Traffic: RX ${json.network.rx_formatted} | TX ${json.network.tx_formatted}`;
+        }
+
+        if (json.server_time && popServerTime) {
+            popServerTime.innerHTML = `<i class="ph ph-clock"></i> Server: ${json.server_time}`;
+        }
+    } catch (e) {
+        console.warn('Gagal memuat server metrics:', e);
+    }
+}
+
+// Inisialisasi Server Metrics Poller
+loadServerMetrics();
+if (!serverMetricsPoller) {
+    serverMetricsPoller = setInterval(loadServerMetrics, 15000);
+}
+
+const btnRefreshMetrics = document.getElementById('btn-refresh-metrics');
+if (btnRefreshMetrics) {
+    btnRefreshMetrics.addEventListener('click', (e) => {
+        e.stopPropagation();
+        btnRefreshMetrics.innerHTML = '<i class="ph ph-spinner spinner"></i>';
+        loadServerMetrics().finally(() => {
+            setTimeout(() => {
+                btnRefreshMetrics.innerHTML = '<i class="ph ph-arrows-clockwise"></i> Perbarui';
+            }, 400);
+        });
+    });
+}
+
+

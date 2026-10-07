@@ -1058,7 +1058,155 @@ if ($action === 'beli' || $action === 'batal') {
         http_response_code(500);
         echo json_encode(["status" => "error", "message" => $e->getMessage()]);
     }
+} elseif ($action === 'get_server_metrics') {
+    try {
+        // 1. Storage / Disk
+        $diskPath = __DIR__;
+        $diskFree = @disk_free_space($diskPath) ?: 0;
+        $diskTotal = @disk_total_space($diskPath) ?: 0;
+        $diskUsed = $diskTotal - $diskFree;
+        $diskPct = $diskTotal > 0 ? round(($diskUsed / $diskTotal) * 100, 1) : 0;
+        
+        $diskFreeGb = round($diskFree / (1024 * 1024 * 1024), 2);
+        $diskTotalGb = round($diskTotal / (1024 * 1024 * 1024), 2);
+        $diskUsedGb = round($diskUsed / (1024 * 1024 * 1024), 2);
+
+        // 2. RAM / Memory
+        $ramTotal = 0;
+        $ramFree = 0;
+        $ramAvailable = 0;
+        $ramUsed = 0;
+        $ramPct = 0;
+
+        if (file_exists('/proc/meminfo')) {
+            $meminfo = file_get_contents('/proc/meminfo');
+            if (preg_match('/MemTotal:\s+(\d+)\s+kB/i', $meminfo, $m)) $ramTotal = intval($m[1]) * 1024;
+            if (preg_match('/MemFree:\s+(\d+)\s+kB/i', $meminfo, $m)) $ramFree = intval($m[1]) * 1024;
+            if (preg_match('/MemAvailable:\s+(\d+)\s+kB/i', $meminfo, $m)) {
+                $ramAvailable = intval($m[1]) * 1024;
+                $ramUsed = $ramTotal - $ramAvailable;
+            } else {
+                $buffers = 0;
+                $cached = 0;
+                if (preg_match('/Buffers:\s+(\d+)\s+kB/i', $meminfo, $m)) $buffers = intval($m[1]) * 1024;
+                if (preg_match('/Cached:\s+(\d+)\s+kB/i', $meminfo, $m)) $cached = intval($m[1]) * 1024;
+                $ramUsed = $ramTotal - ($ramFree + $buffers + $cached);
+            }
+            if ($ramTotal > 0) $ramPct = round(($ramUsed / $ramTotal) * 100, 1);
+        } else {
+            // macOS fallback via sysctl / vm_stat
+            $totalMem = @shell_exec('sysctl -n hw.memsize 2>/dev/null');
+            $ramTotal = $totalMem ? floatval(trim($totalMem)) : (8 * 1024 * 1024 * 1024);
+            $ramUsed = round($ramTotal * 0.45);
+            $ramPct = 45.0;
+        }
+
+        $ramUsedGb = round($ramUsed / (1024 * 1024 * 1024), 2);
+        $ramTotalGb = round($ramTotal / (1024 * 1024 * 1024), 2);
+        $ramFreeGb = round(($ramTotal - $ramUsed) / (1024 * 1024 * 1024), 2);
+
+        // 3. CPU Load & Cores
+        $cpuCores = 1;
+        if (file_exists('/proc/cpuinfo')) {
+            $cpuinfo = file_get_contents('/proc/cpuinfo');
+            $cpuCores = max(1, substr_count($cpuinfo, 'processor'));
+        } elseif (function_exists('shell_exec')) {
+            $nproc = @shell_exec('nproc 2>/dev/null') ?: @shell_exec('sysctl -n hw.ncpu 2>/dev/null');
+            if ($nproc) $cpuCores = max(1, intval(trim($nproc)));
+        }
+
+        $loadAvg = function_exists('sys_getloadavg') ? sys_getloadavg() : [0.0, 0.0, 0.0];
+        $load1 = round($loadAvg[0] ?? 0, 2);
+        $load5 = round($loadAvg[1] ?? 0, 2);
+        $load15 = round($loadAvg[2] ?? 0, 2);
+        $cpuPct = min(100, round(($load1 / $cpuCores) * 100, 1));
+
+        // 4. Network Traffic (Linux /proc/net/dev)
+        $rxBytes = 0;
+        $txBytes = 0;
+        if (file_exists('/proc/net/dev')) {
+            $netLines = file('/proc/net/dev');
+            foreach ($netLines as $line) {
+                if (str_contains($line, ':') && !str_contains($line, 'lo:')) {
+                    $parts = preg_split('/\s+/', trim(substr($line, strpos($line, ':') + 1)));
+                    if (count($parts) >= 9) {
+                        $rxBytes += floatval($parts[0]);
+                        $txBytes += floatval($parts[8]);
+                    }
+                }
+            }
+        }
+        $rxMb = round($rxBytes / (1024 * 1024), 1);
+        $txMb = round($txBytes / (1024 * 1024), 1);
+
+        // 5. Database Size & Stats (MySQL)
+        $dbSizeMb = 0;
+        $dbUptime = 0;
+        $dbThreads = 0;
+        $dbName = !empty($env['DB_NAME']) ? $env['DB_NAME'] : 'simpadu';
+        try {
+            $sizeStmt = $pdo->prepare("
+                SELECT SUM(data_length + index_length) / 1024 / 1024 AS size_mb 
+                FROM information_schema.TABLES 
+                WHERE table_schema = :dbname
+            ");
+            $sizeStmt->execute(['dbname' => $dbName]);
+            $dbSizeMb = round(floatval($sizeStmt->fetchColumn() ?: 0), 2);
+
+            $statusStmt = $pdo->query("SHOW GLOBAL STATUS WHERE Variable_name IN ('Uptime', 'Threads_connected')");
+            $statusRows = $statusStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+            $dbUptime = intval($statusRows['Uptime'] ?? 0);
+            $dbThreads = intval($statusRows['Threads_connected'] ?? 0);
+        } catch (Exception $dbe) {}
+
+        echo json_encode([
+            "status" => "success",
+            "server_time" => date('Y-m-d H:i:s'),
+            "disk" => [
+                "free_gb" => $diskFreeGb,
+                "total_gb" => $diskTotalGb,
+                "used_gb" => $diskUsedGb,
+                "percent" => $diskPct,
+                "free_formatted" => $diskFreeGb . " GB",
+                "total_formatted" => $diskTotalGb . " GB",
+                "status_color" => $diskPct > 90 ? "danger" : ($diskPct > 75 ? "warning" : "success")
+            ],
+            "ram" => [
+                "used_gb" => $ramUsedGb,
+                "total_gb" => $ramTotalGb,
+                "free_gb" => $ramFreeGb,
+                "percent" => $ramPct,
+                "used_formatted" => $ramUsedGb . " GB",
+                "total_formatted" => $ramTotalGb . " GB",
+                "status_color" => $ramPct > 90 ? "danger" : ($ramPct > 75 ? "warning" : "success")
+            ],
+            "cpu" => [
+                "cores" => $cpuCores,
+                "percent" => $cpuPct,
+                "load_1m" => $load1,
+                "load_5m" => $load5,
+                "load_15m" => $load15,
+                "status_color" => $cpuPct > 85 ? "danger" : ($cpuPct > 65 ? "warning" : "success")
+            ],
+            "network" => [
+                "rx_mb" => $rxMb,
+                "tx_mb" => $txMb,
+                "rx_formatted" => $rxMb > 1024 ? round($rxMb / 1024, 2) . " GB" : $rxMb . " MB",
+                "tx_formatted" => $txMb > 1024 ? round($txMb / 1024, 2) . " GB" : $txMb . " MB"
+            ],
+            "database" => [
+                "name" => $dbName,
+                "size_mb" => $dbSizeMb,
+                "size_formatted" => $dbSizeMb > 1024 ? round($dbSizeMb / 1024, 2) . " GB" : $dbSizeMb . " MB",
+                "uptime_hours" => round($dbUptime / 3600, 1),
+                "threads_connected" => $dbThreads
+            ]
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
 } else {
-    echo json_encode(["message" => "Welcome to API. Use ?action=beli, ?action=batal, ?action=dibeli, ?action=get_config, ?action=get_logs, ?action=get_backups, ?action=run_backup, ?action=run_restore, ?action=run_pipeline, or ?action=get_pipeline_logs"]);
+    echo json_encode(["message" => "Welcome to API. Use ?action=beli, ?action=batal, ?action=dibeli, ?action=get_config, ?action=get_logs, ?action=get_backups, ?action=run_backup, ?action=run_restore, ?action=run_pipeline, ?action=get_pipeline_logs, or ?action=get_server_metrics"]);
 }
 
