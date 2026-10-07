@@ -257,6 +257,18 @@ if ($action === 'beli' || $action === 'batal') {
     }
 } elseif ($action === 'get_config') {
     try {
+        // Auto-cleanup stale schedules (RUNNING > 30 mins or PENDING > 60 mins past execution time)
+        $pdo->exec("
+            UPDATE ykk_config 
+            SET status = 'FAILED', pesan_terakhir = 'Jadwal kedaluwarsa / Timeout'
+            WHERE status = 'RUNNING' AND TIMESTAMPDIFF(MINUTE, COALESCE(waktu_eksekusi, jadwal_eksekusi), NOW()) > 30
+        ");
+        $pdo->exec("
+            UPDATE ykk_config 
+            SET status = 'FAILED', pesan_terakhir = 'Jadwal terlewati tanpa dieksekusi'
+            WHERE status = 'PENDING' AND TIMESTAMPDIFF(MINUTE, jadwal_eksekusi, NOW()) > 60
+        ");
+
         $stmt = $pdo->query("SELECT * FROM ykk_config ORDER BY id DESC LIMIT 10");
         $configs = $stmt->fetchAll();
 
@@ -277,6 +289,40 @@ if ($action === 'beli' || $action === 'batal') {
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(["error" => $e->getMessage()]);
+    }
+} elseif ($action === 'reset_pipeline_status') {
+    try {
+        require_once __DIR__ . '/pipeline_runner.php';
+        initPipelineLogTable($pdo);
+
+        // 1. Mark any active RUNNING or PENDING schedules as CANCELLED
+        $pdo->exec("
+            UPDATE ykk_config 
+            SET status = 'CANCELLED', pesan_terakhir = 'Direset ke Standby oleh Operator'
+            WHERE status IN ('PENDING', 'RUNNING')
+        ");
+
+        // 2. Mark any active RUNNING pipeline logs as FAILED / CANCELLED
+        $pdo->exec("
+            UPDATE pipeline_log 
+            SET status = 'FAILED', pesan = 'Direset ke Standby oleh Operator', waktu_selesai = NOW()
+            WHERE status = 'RUNNING'
+        ");
+
+        // 3. Ensure offline mode is safely turned back on (pdam.info.OFFLINE = '1') so system is in normal standby
+        try {
+            $pdo->exec("UPDATE pdam.info SET OFFLINE = '1'");
+        } catch (Exception $e) {
+            // Ignore if table/field doesn't exist
+        }
+
+        echo json_encode([
+            "status" => "success",
+            "message" => "Status alur eksekusi dan antrean jadwal berhasil di-reset ke Standby."
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
     }
 } elseif ($action === 'check_cron') {
     try {

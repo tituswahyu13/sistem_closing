@@ -1023,7 +1023,10 @@ async function triggerDueCronCheck() {
 }
 
 function startCountdownTimer(targetDateStr, status) {
-    if (countdownInterval) clearInterval(countdownInterval);
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
     
     if (!targetDateStr || status === 'SUCCESS') {
         if (countdownTimer) countdownTimer.textContent = 'SELESAI';
@@ -1035,6 +1038,16 @@ function startCountdownTimer(targetDateStr, status) {
         return;
     }
 
+    if (status === 'FAILED' || status === 'CANCELLED' || status === 'EXPIRED') {
+        if (countdownTimer) countdownTimer.textContent = 'STANDBY';
+        if (countdownDetail) countdownDetail.textContent = 'Antrean eksekusi selesai / kedaluwarsa. Silakan simpan jadwal baru.';
+        if (autoScheduleBadge) {
+            autoScheduleBadge.className = 'badge badge-secondary';
+            autoScheduleBadge.textContent = 'STANDBY';
+        }
+        return;
+    }
+
     const targetTime = new Date(targetDateStr.replace(' ', 'T')).getTime();
 
     function update() {
@@ -1042,6 +1055,21 @@ function startCountdownTimer(targetDateStr, status) {
         const diff = targetTime - now;
 
         if (diff <= 0) {
+            // Cek jika diff sudah terlalu lampau (> 15 menit), jangan spam cron
+            if (diff < -15 * 60 * 1000) {
+                if (countdownTimer) countdownTimer.textContent = 'STANDBY';
+                if (countdownDetail) countdownDetail.textContent = `Jadwal ${targetDateStr} telah terlewati. Silakan tentukan jadwal baru.`;
+                if (autoScheduleBadge) {
+                    autoScheduleBadge.className = 'badge badge-secondary';
+                    autoScheduleBadge.textContent = 'KEDALUWARSA / STANDBY';
+                }
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+                return;
+            }
+
             if (countdownTimer) countdownTimer.textContent = '00:00:00 (Jatuh Tempo)';
             if (autoScheduleBadge) {
                 autoScheduleBadge.className = 'badge badge-warning';
@@ -1093,8 +1121,11 @@ async function loadAutomationConfig() {
         const ykkConfigTbody = document.getElementById('ykk-config-tbody');
 
         if (json.status === 'success' && json.data && json.data.length > 0) {
-            // Prioritaskan konfigurasi PENDING, atau yang sesuai periode target
+            // Prioritaskan konfigurasi PENDING, jika tidak ada cari yang RUNNING, lalu targetPeriode
             let activeCfg = json.data.find(c => c.status === 'PENDING');
+            if (!activeCfg) {
+                activeCfg = json.data.find(c => c.status === 'RUNNING');
+            }
             if (!activeCfg) {
                 activeCfg = json.data.find(c => c.periode === targetPeriode);
             }
@@ -2145,6 +2176,7 @@ if (formRestoreDatabase) {
 // ====================================================================
 const btnRunMasterPipeline = document.getElementById('btn-run-master-pipeline');
 const btnRefreshPipelineLogs = document.getElementById('btn-refresh-pipeline-logs');
+const btnResetPipelineStepper = document.getElementById('btn-reset-pipeline-stepper');
 const pipelineConsoleOutput = document.getElementById('pipeline-console-output');
 const pipelineHistoryTbody = document.getElementById('pipeline-history-tbody');
 const pipelineBatchIdBadge = document.getElementById('pipeline-batch-id-badge');
@@ -2154,6 +2186,7 @@ const pipelineStatusBadge = document.getElementById('pipeline-status-badge');
 let pipelineLiveTimerInterval = null;
 let pipelinePollerInterval = null;
 let pipelineStartTimestamp = null;
+let isManualPipelineReset = false;
 
 const stepNamesDef = [
     'Tahap 0: Set Mode Maintenance (OFFLINE = 0)',
@@ -2345,7 +2378,14 @@ async function loadPipelineLogs() {
 
             // Render batch terakhir pada stepper & progress bar
             const latestBatch = json.batches[0];
-            if (latestBatch && latestBatch.steps) {
+            const isAnyRunning = json.batches.some(b => b.status === 'RUNNING');
+            if (isAnyRunning) {
+                isManualPipelineReset = false;
+            }
+
+            if (isManualPipelineReset && !isAnyRunning) {
+                resetAllStepCards();
+            } else if (latestBatch && latestBatch.steps) {
                 if (pipelineBatchIdBadge) {
                     pipelineBatchIdBadge.textContent = `Batch: ${latestBatch.batch_id} (${latestBatch.periode})`;
                 }
@@ -2588,6 +2628,36 @@ if (btnRunMasterPipeline) {
 }
 if (btnRefreshPipelineLogs) {
     btnRefreshPipelineLogs.addEventListener('click', loadPipelineLogs);
+}
+if (btnResetPipelineStepper) {
+    btnResetPipelineStepper.addEventListener('click', async () => {
+        if (!confirm('Apakah Anda yakin ingin me-reset status alur eksekusi ke STANDBY?\n\nTindakan ini akan membatalkan antrean running/pending lama dan mengembalikan status sistem ke normal.')) {
+            return;
+        }
+        btnResetPipelineStepper.disabled = true;
+        btnResetPipelineStepper.innerHTML = '<i class="ph ph-spinner spinner"></i> Mereset...';
+        try {
+            const res = await fetch('api.php?action=reset_pipeline_status', { method: 'POST' });
+            const json = await res.json();
+            if (json.status === 'success') {
+                isManualPipelineReset = true;
+                resetAllStepCards();
+                if (pipelineConsoleOutput) {
+                    pipelineConsoleOutput.textContent = `[${new Date().toLocaleTimeString('id-ID')}] Status alur eksekusi berhasil di-reset ke Standby.\n`;
+                }
+                showNotification('Sukses', json.message || 'Status alur berhasil di-reset ke Standby.', 'success');
+                await loadAutomationConfig();
+                await loadPipelineLogs();
+            } else {
+                showNotification('Gagal', json.message || 'Gagal mereset status alur.', 'danger');
+            }
+        } catch (err) {
+            showNotification('Error', 'Terjadi kesalahan jaringan: ' + err.message, 'danger');
+        } finally {
+            btnResetPipelineStepper.disabled = false;
+            btnResetPipelineStepper.innerHTML = '<i class="ph ph-arrow-counter-clockwise"></i> Reset ke Standby';
+        }
+    });
 }
 
 // Init
