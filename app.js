@@ -665,10 +665,12 @@ function switchTab(tabId) {
     const tableContainer = document.querySelector('.table-container');
     const pipelineSec = document.getElementById('pipeline-section');
     const backupSec = document.getElementById('backup-section');
+    const closingRekeningSec = document.getElementById('closing-rekening-section');
     
     // Reset all major section visibility
     if (pipelineSec) pipelineSec.style.display = (tabId === 'pipeline' || tabId === 'otomasi') ? 'block' : 'none';
     if (backupSec) backupSec.style.display = (tabId === 'backup') ? 'block' : 'none';
+    if (closingRekeningSec) closingRekeningSec.style.display = (tabId === 'closing_rekening') ? 'block' : 'none';
     
     const isTableTab = (tabId === 'beli' || tabId === 'batal' || tabId === 'dibeli');
     if (tableContainer) tableContainer.style.display = isTableTab ? 'block' : 'none';
@@ -713,11 +715,27 @@ function switchTab(tabId) {
         showEmptyState();
         updatePeriodeUI();
     } else if (tabId === 'pipeline' || tabId === 'otomasi') {
-        pageTitle.textContent = 'Master Closing Pipeline (6-Tahap Otomasi)';
+        pageTitle.textContent = 'Closing Tagihan (Pipeline 6-Tahap Otomasi)';
         if (budgetPanel) budgetPanel.style.display = 'none';
         loadAutomationConfig();
         loadPipelineLogs();
         startPipelineTabAutoPoller();
+    } else if (tabId === 'closing_rekening') {
+        pageTitle.textContent = 'Closing Rekening Air Bulanan';
+        if (budgetPanel) budgetPanel.style.display = 'none';
+        
+        // Update Rekening Info from active metrics
+        const rekeningPeriodEl = document.getElementById('rekening-period-display');
+        const rekeningDbEl = document.getElementById('rekening-db-indicator');
+        if (lastMetricsData) {
+            if (rekeningPeriodEl && lastMetricsData.closing_ops) {
+                rekeningPeriodEl.textContent = `${lastMetricsData.closing_ops.active_period_formatted || lastMetricsData.closing_ops.active_period}`;
+            }
+            if (rekeningDbEl && lastMetricsData.database) {
+                rekeningDbEl.textContent = `DB: ${lastMetricsData.database.label || lastMetricsData.database.host}`;
+                rekeningDbEl.className = `badge ${lastMetricsData.database.env_type === 'Production' ? 'badge-prod' : 'badge-dev'}`;
+            }
+        }
     } else if (tabId === 'backup') {
         pageTitle.textContent = 'Pencadangan Database Otomatis';
         if (budgetPanel) budgetPanel.style.display = 'none';

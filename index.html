@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=48">
+    <link rel="stylesheet" href="styles.css?v=49">
 </head>
 <body>
     <div class="app-container">
@@ -46,7 +46,11 @@
                 </button>
                 <button class="nav-item" data-tab="pipeline">
                     <i class="ph ph-git-merge"></i>
-                    <span>Master Closing Pipeline</span>
+                    <span>Closing Tagihan</span>
+                </button>
+                <button class="nav-item" data-tab="closing_rekening">
+                    <i class="ph ph-receipt"></i>
+                    <span>Closing Rekening</span>
                 </button>
                 <button class="nav-item" data-tab="backup">
                     <i class="ph ph-hard-drives"></i>
@@ -331,7 +335,7 @@
                             </div>
                             <div class="schedule-text-box">
                                 <div class="schedule-title-row">
-                                    <h3>Master Pipeline Otomasi (6-Tahapan Terpadu)</h3>
+                                    <h3>Closing Tagihan (Pipeline 6-Tahap Otomasi)</h3>
                                     <span class="badge badge-purple" id="pipeline-status-badge">
                                         <i class="ph ph-shield-check"></i> Siap Eksekusi
                                     </span>
@@ -960,6 +964,100 @@
                 </div>
             </div>
 
+            <!-- Closing Rekening Section -->
+            <div class="closing-rekening-section" id="closing-rekening-section" style="display: none;">
+                <!-- Header Banner Card -->
+                <div class="glass-panel schedule-banner" style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95)); border-left: 4px solid #38bdf8; margin-bottom: 1.5rem;">
+                    <div class="schedule-banner-content">
+                        <div class="schedule-icon-box" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8;">
+                            <i class="ph ph-receipt"></i>
+                        </div>
+                        <div class="schedule-text-box">
+                            <div class="schedule-title-row">
+                                <h3>Closing Rekening Air Bulanan</h3>
+                                <span class="badge badge-success" id="rekening-status-badge">
+                                    <i class="ph ph-check-circle"></i> Sistem Siap
+                                </span>
+                            </div>
+                            <p style="font-size: 0.82rem; color: #94a3b8; margin: 4px 0 0 0;">
+                                Modul proses penutupan buku dan pembukuan rekening air pelanggan PERUMDAM per periode tagihan.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Workflow Cards for Closing Rekening -->
+                <div class="glass-panel mb-4" style="margin-bottom: 1.5rem;">
+                    <div class="panel-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.85rem; margin-bottom: 1.25rem;">
+                        <h2 style="font-size: 1.15rem; color: #fff; display: flex; align-items: center; gap: 0.5rem; margin: 0;">
+                            <i class="ph ph-stack"></i> Tahapan Closing Rekening
+                        </h2>
+                        <span class="badge badge-dev" id="rekening-db-indicator">DB: SIMPAM</span>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem;">
+                        <!-- Tahap 1 -->
+                        <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 1.1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <span style="font-size: 0.72rem; font-weight: 700; color: #38bdf8; text-transform: uppercase;">Tahap 1</span>
+                                <i class="ph ph-shield-check" style="color: #38bdf8; font-size: 1.2rem;"></i>
+                            </div>
+                            <strong style="color: #fff; font-size: 0.95rem;">Verifikasi Saldo & Billing</strong>
+                            <p style="font-size: 0.78rem; color: #94a3b8; margin: 0; line-height: 1.4;">
+                                Pengecekan konsistensi data tagihan dan pembayaran rekening air sebelum tutup buku.
+                            </p>
+                        </div>
+
+                        <!-- Tahap 2 -->
+                        <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 1.1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <span style="font-size: 0.72rem; font-weight: 700; color: #a855f7; text-transform: uppercase;">Tahap 2</span>
+                                <i class="ph ph-hard-drives" style="color: #a855f7; font-size: 1.2rem;"></i>
+                            </div>
+                            <strong style="color: #fff; font-size: 0.95rem;">Snapshot Data Rekening</strong>
+                            <p style="font-size: 0.78rem; color: #94a3b8; margin: 0; line-height: 1.4;">
+                                Pencadangan otomatis tabel-tabel rekening (<code>spd_rekening</code>, <code>spd_tagrek</code>, <code>spd_tunggak</code>).
+                            </p>
+                        </div>
+
+                        <!-- Tahap 3 -->
+                        <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 1.1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <span style="font-size: 0.72rem; font-weight: 700; color: #10b981; text-transform: uppercase;">Tahap 3</span>
+                                <i class="ph ph-lock-key" style="color: #10b981; font-size: 1.2rem;"></i>
+                            </div>
+                            <strong style="color: #fff; font-size: 0.95rem;">Eksekusi Tutup Buku</strong>
+                            <p style="font-size: 0.78rem; color: #94a3b8; margin: 0; line-height: 1.4;">
+                                Penguncian periode rekening berjalan dan inisialisasi pembukuan periode berikutnya.
+                            </p>
+                        </div>
+
+                        <!-- Tahap 4 -->
+                        <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 1.1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <span style="font-size: 0.72rem; font-weight: 700; color: #fbbf24; text-transform: uppercase;">Tahap 4</span>
+                                <i class="ph ph-file-text" style="color: #fbbf24; font-size: 1.2rem;"></i>
+                            </div>
+                            <strong style="color: #fff; font-size: 0.95rem;">Rekap & Jurnal Keuangan</strong>
+                            <p style="font-size: 0.78rem; color: #94a3b8; margin: 0; line-height: 1.4;">
+                                Pembentukan ikhtisar penerimaan air, non-air, denda, dan mutasi saldo piutang.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Info Box & Panel Status -->
+                <div class="glass-panel" style="padding: 1.5rem; text-align: center; background: rgba(15, 23, 42, 0.7);">
+                    <div style="display: inline-flex; align-items: center; gap: 0.65rem; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25); padding: 0.6rem 1.25rem; border-radius: 8px; color: #e2e8f0; font-size: 0.85rem; margin-bottom: 1rem;">
+                        <i class="ph ph-calendar" style="color: #38bdf8; font-size: 1.1rem;"></i>
+                        <span>Periode Rekening Aktif: <strong id="rekening-period-display" style="color: #38bdf8;">Memuat...</strong></span>
+                    </div>
+                    <p style="color: #94a3b8; font-size: 0.82rem; margin: 0 auto; max-width: 480px;">
+                        Menu ini siap digunakan untuk alur penutupan rekening air sesuai SOP Perumdam.
+                    </p>
+                </div>
+            </div>
+
             <!-- Modal Konfirmasi Restore Database -->
             <div class="modal-overlay" id="modal-restore" style="display: none; position: fixed; inset: 0; background: rgba(5, 8, 16, 0.85); backdrop-filter: blur(8px); z-index: 1000; align-items: center; justify-content: center;">
                 <div class="glass-panel modal-card" style="width: 100%; max-width: 520px; padding: 1.75rem; border: 1px solid rgba(239, 68, 68, 0.3); box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
@@ -1259,6 +1357,6 @@
         </main>
     </div>
 
-    <script src="app.js?v=48"></script>
+    <script src="app.js?v=49"></script>
 </body>
 </html>
