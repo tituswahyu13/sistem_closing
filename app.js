@@ -2619,18 +2619,27 @@ if (testLoading === '1') {
 }
 
 // ==========================================================================
-// Server Health & Storage Monitor (Sidebar Card)
+// Server Health, Closing Diagnostics & Storage Monitor
 // ==========================================================================
 let serverMetricsPoller = null;
+let lastMetricsData = null;
 
-async function loadServerMetrics() {
+async function loadServerMetrics(showFeedback = false) {
+    const btnRefreshDiag = document.getElementById('btn-refresh-diag');
+    if (showFeedback && btnRefreshDiag) {
+        btnRefreshDiag.innerHTML = '<i class="ph ph-spinner-gap ph-spin"></i> Memuat...';
+        btnRefreshDiag.disabled = true;
+    }
+
     try {
         const res = await fetch('api.php?action=get_server_metrics');
-        if (!res.ok) return;
+        if (!res.ok) throw new Error('Network error');
         const json = await res.json();
-        if (json.status !== 'success') return;
+        if (json.status !== 'success') throw new Error(json.message || 'API error');
 
-        // Sidebar Elements
+        lastMetricsData = json;
+
+        // 1. Sidebar Elements
         const diskFreeEl = document.getElementById('sidebar-disk-free');
         const diskFillEl = document.getElementById('sidebar-disk-fill');
         const diskSubEl = document.getElementById('sidebar-disk-sub');
@@ -2639,7 +2648,25 @@ async function loadServerMetrics() {
         const cpuTextEl = document.getElementById('sidebar-cpu-text');
         const dbTextEl = document.getElementById('sidebar-db-text');
         const statusBadgeEl = document.getElementById('sidebar-status-badge');
+        const dbLabelEl = document.getElementById('sidebar-db-label');
+        const backupTextEl = document.getElementById('sidebar-last-backup-text');
+        const conflictPillEl = document.getElementById('sidebar-conflict-pill');
+        const conflictTextEl = document.getElementById('sidebar-conflict-text');
 
+        // Topbar Elements
+        const topbarDbNameEl = document.getElementById('topbar-db-name');
+        const topbarDbPingEl = document.getElementById('topbar-db-ping');
+
+        // Database info
+        if (json.database) {
+            const labelStr = json.database.label || `${json.database.host}:${json.database.port}`;
+            if (dbLabelEl) dbLabelEl.textContent = `DB: ${labelStr}`;
+            if (topbarDbNameEl) topbarDbNameEl.textContent = `DB: ${labelStr.split(' ')[0]}`;
+            if (topbarDbPingEl) topbarDbPingEl.textContent = `${json.database.ping_ms || 0} ms`;
+            if (dbTextEl) dbTextEl.textContent = json.database.size_formatted;
+        }
+
+        // Storage / Disk
         if (json.disk) {
             if (diskFreeEl) diskFreeEl.textContent = `${json.disk.free_gb} GB`;
             if (diskSubEl) diskSubEl.textContent = `Terpakai: ${json.disk.used_gb} GB dari ${json.disk.total_gb} GB (${json.disk.percent}%)`;
@@ -2649,6 +2676,7 @@ async function loadServerMetrics() {
             }
         }
 
+        // RAM Memory
         if (json.ram) {
             if (ramTextEl) ramTextEl.textContent = `${json.ram.used_gb} / ${json.ram.total_gb} GB (${json.ram.percent}%)`;
             if (ramFillEl) {
@@ -2657,18 +2685,40 @@ async function loadServerMetrics() {
             }
         }
 
+        // CPU
         if (json.cpu) {
             if (cpuTextEl) cpuTextEl.textContent = `${json.cpu.percent}%`;
         }
 
-        if (json.database) {
-            if (dbTextEl) dbTextEl.textContent = json.database.size_formatted;
+        // Closing & Backup Operations
+        if (json.closing_ops) {
+            if (backupTextEl) {
+                if (json.closing_ops.last_backup) {
+                    backupTextEl.textContent = json.closing_ops.last_backup.time_ago;
+                    backupTextEl.title = `${json.closing_ops.last_backup.datetime} (${json.closing_ops.last_backup.size_formatted})`;
+                } else {
+                    backupTextEl.textContent = 'Belum Ada';
+                }
+            }
+
+            if (conflictPillEl && conflictTextEl) {
+                if (json.closing_ops.duplicate_count > 0) {
+                    conflictPillEl.style.display = 'inline-flex';
+                    conflictTextEl.textContent = `${json.closing_ops.duplicate_count} Tagihan Duplikat!`;
+                } else {
+                    conflictPillEl.style.display = 'none';
+                }
+            }
         }
 
         if (statusBadgeEl) {
             statusBadgeEl.textContent = 'Online';
             statusBadgeEl.className = 'badge badge-success';
         }
+
+        // Populate Modal Diagnostics if open or populated
+        updateDiagnosticsModalUI(json);
+
     } catch (e) {
         console.warn('Gagal memuat server metrics:', e);
         const statusBadgeEl = document.getElementById('sidebar-status-badge');
@@ -2676,7 +2726,166 @@ async function loadServerMetrics() {
             statusBadgeEl.textContent = 'Offline';
             statusBadgeEl.className = 'badge badge-danger';
         }
+    } finally {
+        if (showFeedback && btnRefreshDiag) {
+            btnRefreshDiag.innerHTML = '<i class="ph ph-arrows-clockwise"></i> Perbarui';
+            btnRefreshDiag.disabled = false;
+        }
     }
+}
+
+function updateDiagnosticsModalUI(json) {
+    if (!json) return;
+
+    // Database
+    const diagDbHost = document.getElementById('diag-db-host');
+    const diagDbEnv = document.getElementById('diag-db-env');
+    const diagDbName = document.getElementById('diag-db-name');
+    const diagDbSize = document.getElementById('diag-db-size');
+    const diagDbPing = document.getElementById('diag-db-ping');
+    const diagDbThreads = document.getElementById('diag-db-threads');
+
+    if (json.database) {
+        if (diagDbHost) diagDbHost.textContent = `${json.database.host}:${json.database.port}`;
+        if (diagDbEnv) {
+            diagDbEnv.textContent = json.database.env_type || 'Development';
+            diagDbEnv.className = `diag-sub-badge ${json.database.env_type === 'Production' ? 'badge-prod' : 'badge-dev'}`;
+        }
+        if (diagDbName) diagDbName.textContent = json.database.name;
+        if (diagDbSize) diagDbSize.textContent = `${json.database.size_formatted} (Uptime: ${json.database.uptime_hours} Jam)`;
+        if (diagDbPing) diagDbPing.innerHTML = `<strong style="color: #34d399;">${json.database.ping_ms} ms</strong>`;
+        if (diagDbThreads) diagDbThreads.textContent = `${json.database.threads_connected} Threads Connected`;
+    }
+
+    // Closing Ops
+    const diagActivePeriod = document.getElementById('diag-active-period');
+    const diagActivePeriodFmt = document.getElementById('diag-active-period-fmt');
+    const diagLastBackupTime = document.getElementById('diag-last-backup-time');
+    const diagLastBackupSize = document.getElementById('diag-last-backup-size');
+    const diagConflictVal = document.getElementById('diag-conflict-val');
+
+    if (json.closing_ops) {
+        if (diagActivePeriod) diagActivePeriod.textContent = json.closing_ops.active_period || '-';
+        if (diagActivePeriodFmt) diagActivePeriodFmt.textContent = json.closing_ops.active_period_formatted || '-';
+
+        if (json.closing_ops.last_backup) {
+            if (diagLastBackupTime) diagLastBackupTime.textContent = json.closing_ops.last_backup.datetime;
+            if (diagLastBackupSize) diagLastBackupSize.textContent = `${json.closing_ops.last_backup.size_formatted} (${json.closing_ops.last_backup.time_ago})`;
+        } else {
+            if (diagLastBackupTime) diagLastBackupTime.textContent = 'Belum Ada Arsip';
+            if (diagLastBackupSize) diagLastBackupSize.textContent = 'Harap buat cadangan sebelum closing';
+        }
+
+        if (diagConflictVal) {
+            if (json.closing_ops.duplicate_count > 0) {
+                diagConflictVal.innerHTML = `<span style="color: #ef4444;"><i class="ph ph-warning-octagon"></i> ${json.closing_ops.duplicate_count} Tagihan Ganda</span>`;
+            } else {
+                diagConflictVal.innerHTML = `<span style="color: #10b981;"><i class="ph ph-check-circle"></i> Bersih (0 Duplikat)</span>`;
+            }
+        }
+    }
+
+    // Disk
+    const diagDiskPct = document.getElementById('diag-disk-pct');
+    const diagDiskFill = document.getElementById('diag-disk-fill');
+    const diagDiskFree = document.getElementById('diag-disk-free');
+    const diagDiskTotal = document.getElementById('diag-disk-total');
+
+    if (json.disk) {
+        if (diagDiskPct) diagDiskPct.textContent = `${json.disk.percent}%`;
+        if (diagDiskFill) {
+            diagDiskFill.style.width = `${json.disk.percent}%`;
+            diagDiskFill.className = `sidebar-progress-fill ${json.disk.status_color || ''}`;
+        }
+        if (diagDiskFree) diagDiskFree.textContent = `${json.disk.free_gb} GB`;
+        if (diagDiskTotal) diagDiskTotal.textContent = `Total: ${json.disk.total_gb} GB`;
+    }
+
+    // RAM
+    const diagRamPct = document.getElementById('diag-ram-pct');
+    const diagRamFill = document.getElementById('diag-ram-fill');
+    const diagRamUsed = document.getElementById('diag-ram-used');
+    const diagRamTotal = document.getElementById('diag-ram-total');
+
+    if (json.ram) {
+        if (diagRamPct) diagRamPct.textContent = `${json.ram.percent}%`;
+        if (diagRamFill) {
+            diagRamFill.style.width = `${json.ram.percent}%`;
+            diagRamFill.className = `sidebar-progress-fill ram ${json.ram.status_color || ''}`;
+        }
+        if (diagRamUsed) diagRamUsed.textContent = `${json.ram.used_gb} GB`;
+        if (diagRamTotal) diagRamTotal.textContent = `Total: ${json.ram.total_gb} GB`;
+    }
+
+    // CPU, Network, OS
+    const diagCpuVal = document.getElementById('diag-cpu-val');
+    const diagCpuLoad = document.getElementById('diag-cpu-load');
+    const diagNetRx = document.getElementById('diag-net-rx');
+    const diagNetTx = document.getElementById('diag-net-tx');
+    const diagPhpVersion = document.getElementById('diag-php-version');
+    const diagServerOs = document.getElementById('diag-server-os');
+    const diagLastSync = document.getElementById('diag-last-sync');
+
+    if (json.cpu) {
+        if (diagCpuVal) diagCpuVal.textContent = `${json.cpu.cores} Cores (${json.cpu.percent}%)`;
+        if (diagCpuLoad) diagCpuLoad.textContent = `Load: ${json.cpu.load_1m}, ${json.cpu.load_5m}, ${json.cpu.load_15m}`;
+    }
+
+    if (json.network) {
+        if (diagNetRx) diagNetRx.textContent = `RX: ${json.network.rx_formatted}`;
+        if (diagNetTx) diagNetTx.textContent = `TX: ${json.network.tx_formatted}`;
+    }
+
+    if (json.server_env) {
+        if (diagPhpVersion) diagPhpVersion.textContent = `PHP ${json.server_env.php_version}`;
+        if (diagServerOs) diagServerOs.textContent = `${json.server_env.os}`;
+    }
+
+    if (diagLastSync) diagLastSync.textContent = json.server_time || '-';
+}
+
+// Modal Diagnostics Handlers
+const modalDiagnostics = document.getElementById('modal-server-diagnostics');
+const btnCloseDiagModal = document.getElementById('btn-close-diag-modal');
+const btnCloseDiagAction = document.getElementById('btn-close-diag-action');
+const btnRefreshDiag = document.getElementById('btn-refresh-diag');
+const sidebarServerMonitor = document.getElementById('sidebar-server-monitor');
+const topbarDbBadge = document.getElementById('topbar-db-badge');
+
+function openDiagnosticsModal() {
+    if (modalDiagnostics) {
+        modalDiagnostics.style.display = 'flex';
+        loadServerMetrics();
+    }
+}
+
+function closeDiagnosticsModal() {
+    if (modalDiagnostics) {
+        modalDiagnostics.style.display = 'none';
+    }
+}
+
+if (sidebarServerMonitor) {
+    sidebarServerMonitor.addEventListener('click', openDiagnosticsModal);
+}
+if (topbarDbBadge) {
+    topbarDbBadge.addEventListener('click', openDiagnosticsModal);
+}
+if (btnCloseDiagModal) {
+    btnCloseDiagModal.addEventListener('click', closeDiagnosticsModal);
+}
+if (btnCloseDiagAction) {
+    btnCloseDiagAction.addEventListener('click', closeDiagnosticsModal);
+}
+if (btnRefreshDiag) {
+    btnRefreshDiag.addEventListener('click', () => loadServerMetrics(true));
+}
+if (modalDiagnostics) {
+    modalDiagnostics.addEventListener('click', (e) => {
+        if (e.target === modalDiagnostics) {
+            closeDiagnosticsModal();
+        }
+    });
 }
 
 // Inisialisasi Server Metrics Poller

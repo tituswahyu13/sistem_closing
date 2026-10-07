@@ -1139,12 +1139,33 @@ if ($action === 'beli' || $action === 'batal') {
         $rxMb = round($rxBytes / (1024 * 1024), 1);
         $txMb = round($txBytes / (1024 * 1024), 1);
 
-        // 5. Database Size & Stats (MySQL)
+        // 5. Database Stats & Connection
         $dbSizeMb = 0;
         $dbUptime = 0;
         $dbThreads = 0;
         $dbName = !empty($env['DB_NAME']) ? $env['DB_NAME'] : 'simpadu';
+        $dbHost = !empty($env['DB_HOST']) ? $env['DB_HOST'] : '127.0.0.1';
+        $dbPort = !empty($env['DB_PORT']) ? $env['DB_PORT'] : '3306';
+        
+        $dbHostLabel = $dbHost;
+        $dbEnvType = 'Custom';
+        if ($dbHost === '192.168.0.10') {
+            $dbHostLabel = 'SIMPAM (Development)';
+            $dbEnvType = 'Development';
+        } elseif ($dbHost === '192.168.8.11') {
+            $dbHostLabel = 'SIMPADU (Production)';
+            $dbEnvType = 'Production';
+        }
+
+        $dbPingMs = 0.0;
+        $mysqlVersion = 'Unknown';
         try {
+            $tPingStart = microtime(true);
+            $pdo->query("SELECT 1");
+            $dbPingMs = round((microtime(true) - $tPingStart) * 1000, 2);
+
+            $mysqlVersion = $pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
+
             $sizeStmt = $pdo->prepare("
                 SELECT SUM(data_length + index_length) / 1024 / 1024 AS size_mb 
                 FROM information_schema.TABLES 
@@ -1159,9 +1180,123 @@ if ($action === 'beli' || $action === 'batal') {
             $dbThreads = intval($statusRows['Threads_connected'] ?? 0);
         } catch (Exception $dbe) {}
 
+        // 6. Active Billing Period & Last Closing Execution
+        $activePeriod = date('Ym');
+        $activePeriodFormatted = date('F Y');
+        try {
+            $cfgStmt = $pdo->query("SELECT setting_value FROM ykk_config WHERE setting_key = 'periode_aktif' LIMIT 1");
+            $cfgPeriod = $cfgStmt ? $cfgStmt->fetchColumn() : null;
+            if ($cfgPeriod && preg_match('/^\d{6}$/', $cfgPeriod)) {
+                $activePeriod = $cfgPeriod;
+            } else {
+                $perStmt = $pdo->query("SELECT MAX(PERIODE) FROM spd_rekening WHERE STATUS = 'a'");
+                $maxP = $perStmt ? $perStmt->fetchColumn() : null;
+                if ($maxP) $activePeriod = $maxP;
+            }
+            if (strlen($activePeriod) === 6) {
+                $thn = substr($activePeriod, 0, 4);
+                $bln = substr($activePeriod, 4, 2);
+                $namaBulan = [
+                    '01' => 'Januari', '02' => 'Februari', '03' => 'Maret', '04' => 'April',
+                    '05' => 'Mei', '06' => 'Juni', '07' => 'Juli', '08' => 'Agustus',
+                    '09' => 'September', '10' => 'Oktober', '11' => 'November', '12' => 'Desember'
+                ];
+                $activePeriodFormatted = ($namaBulan[$bln] ?? $bln) . ' ' . $thn;
+            }
+        } catch (Exception $e) {}
+
+        // Last Closing Execution Info
+        $lastClosing = null;
+        try {
+            $pipeStmt = $pdo->query("SELECT periode, status, created_at, execution_time_sec FROM pipeline_log ORDER BY id DESC LIMIT 1");
+            $lastClosingRow = $pipeStmt ? $pipeStmt->fetch(PDO::FETCH_ASSOC) : null;
+            if ($lastClosingRow) {
+                $lastClosing = [
+                    'periode' => $lastClosingRow['periode'],
+                    'status' => $lastClosingRow['status'],
+                    'created_at' => $lastClosingRow['created_at'],
+                    'duration' => $lastClosingRow['execution_time_sec'] . ' detik'
+                ];
+            }
+        } catch (Exception $e) {}
+
+        // 7. Last Backup File Info
+        $lastBackup = null;
+        $backupDir = __DIR__ . '/backups';
+        if (is_dir($backupDir)) {
+            $backupFiles = array_unique(array_merge(
+                glob("{$backupDir}/*.sql.gz") ?: [],
+                glob("{$backupDir}/*.sql") ?: [],
+                glob("{$backupDir}/*.gz") ?: []
+            ));
+            if (!empty($backupFiles)) {
+                usort($backupFiles, function($a, $b) {
+                    return filemtime($b) - filemtime($a);
+                });
+                $newest = $backupFiles[0];
+                $mtime = filemtime($newest);
+                $sz = filesize($newest);
+                $szFmt = $sz >= 1048576 ? round($sz / 1048576, 1) . ' MB' : round($sz / 1024, 1) . ' KB';
+                
+                $diffHours = round((time() - $mtime) / 3600, 1);
+                $timeAgo = $diffHours < 1 ? 'Baru saja' : ($diffHours < 24 ? round($diffHours) . ' jam lalu' : floor($diffHours / 24) . ' hari lalu');
+
+                $lastBackup = [
+                    'filename' => basename($newest),
+                    'size_formatted' => $szFmt,
+                    'datetime' => date('d M Y H:i', $mtime),
+                    'time_ago' => $timeAgo,
+                    'is_recent' => ($diffHours <= 24)
+                ];
+            }
+        }
+
+        // 8. Pre-Closing Conflict / Health Check
+        $duplicateCount = 0;
+        try {
+            $dupStmt = $pdo->query("
+                SELECT COUNT(*) 
+                FROM spd_tagrek a 
+                INNER JOIN spd_tunggak b 
+                   ON a.no_pdam = b.no_pdam 
+                  AND a.rekening_bulan = b.rekening_bulan 
+                  AND a.is_delete = 0 
+                  AND b.is_delete = 0 
+                  AND a.lunas = 0 
+                  AND b.lunas = 0
+            ");
+            $duplicateCount = intval($dupStmt ? $dupStmt->fetchColumn() : 0);
+        } catch (Exception $e) {}
+
         echo json_encode([
             "status" => "success",
             "server_time" => date('Y-m-d H:i:s'),
+            "server_env" => [
+                "php_version" => PHP_VERSION,
+                "os" => PHP_OS . ' (' . php_uname('m') . ')',
+                "web_server" => $_SERVER['SERVER_SOFTWARE'] ?? 'Apache/Nginx',
+                "hostname" => gethostname() ?: 'server'
+            ],
+            "database" => [
+                "host" => $dbHost,
+                "port" => $dbPort,
+                "name" => $dbName,
+                "label" => $dbHostLabel,
+                "env_type" => $dbEnvType,
+                "version" => $mysqlVersion,
+                "size_mb" => $dbSizeMb,
+                "size_formatted" => $dbSizeMb > 1024 ? round($dbSizeMb / 1024, 2) . " GB" : $dbSizeMb . " MB",
+                "uptime_hours" => round($dbUptime / 3600, 1),
+                "threads_connected" => $dbThreads,
+                "ping_ms" => $dbPingMs
+            ],
+            "closing_ops" => [
+                "active_period" => $activePeriod,
+                "active_period_formatted" => $activePeriodFormatted,
+                "duplicate_count" => $duplicateCount,
+                "last_backup" => $lastBackup,
+                "last_closing" => $lastClosing
+            ],
             "disk" => [
                 "free_gb" => $diskFreeGb,
                 "total_gb" => $diskTotalGb,
@@ -1193,13 +1328,6 @@ if ($action === 'beli' || $action === 'batal') {
                 "tx_mb" => $txMb,
                 "rx_formatted" => $rxMb > 1024 ? round($rxMb / 1024, 2) . " GB" : $rxMb . " MB",
                 "tx_formatted" => $txMb > 1024 ? round($txMb / 1024, 2) . " GB" : $txMb . " MB"
-            ],
-            "database" => [
-                "name" => $dbName,
-                "size_mb" => $dbSizeMb,
-                "size_formatted" => $dbSizeMb > 1024 ? round($dbSizeMb / 1024, 2) . " GB" : $dbSizeMb . " MB",
-                "uptime_hours" => round($dbUptime / 3600, 1),
-                "threads_connected" => $dbThreads
             ]
         ]);
     } catch (Exception $e) {
