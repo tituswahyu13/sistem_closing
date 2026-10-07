@@ -992,22 +992,190 @@ function executeClosingRekeningPipeline($params = []) {
         }
 
         // -------------------------------------------------------------
-        // TAHAP 3: TRANSAKSI TRANSFER PPOB (KUERI MENYUSUL)
+        // TAHAP 3: TRANSAKSI TRANSFER PPOB & HANKAM
         // -------------------------------------------------------------
         $step3Name = "Tahap 3: Transaksi Transfer Tagihan ke PPOB";
         $log("\n>>> Menjalankan $step3Name...");
         $t3_start = date('Y-m-d H:i:s');
         recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start);
 
-        // Placeholder kueri transfer PPOB - siap diinjeksi
-        $log("ℹ Menjalankan sinkronisasi data rekening ke mitra PPOB...");
-        usleep(300000);
+        $pdo->beginTransaction();
 
-        $t3_end = date('Y-m-d H:i:s');
-        $pesanStep3 = "Transfer data rekening ke PPOB berhasil disinkronisasi.";
-        $log("✓ $step3Name berhasil. $pesanStep3");
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'SUCCESS', $t3_start, $t3_end, $pesanStep3);
-        $pipelineResult['steps'][3] = ['name' => $step3Name, 'status' => 'SUCCESS', 'pesan' => $pesanStep3];
+        try {
+            // 1. TRUNCATE tabel pdam.ppob
+            $pdo->exec("TRUNCATE `pdam`.`ppob`");
+            $log("   - TRUNCATE `pdam`.`ppob` berhasil.");
+
+            // 2. Insert Tagihan Berjalan ke pdam.ppob
+            $sqlPpobTagihan = "
+                INSERT INTO `pdam`.ppob
+                SELECT a.NO_PDAM, b.NAMA, b.ALAMAT, concat(c.KETERANGAN, ' (', a.STGOL_ID, ')') AS GOL,
+                IF(a.EDITMETER = 0, a.METER, a.EDITMETER) AS MTRINI, a.METERLALU, a.VOLUME_TAGIHAN AS PAKAI, (a.RK + a.MATERAI) AS TAGAIR, a.NON_AIR AS TAGNONAIR,
+                IFNULL(concat('(', d.XANGSUR, '/', d.XRLANG, ')'), 0) AS ANGS_KE, 0 AS DENDA, a.SUBSIDI AS SUBSIDI, (a.RK + a.NON_AIR + a.MATERAI - a.SUBSIDI) AS TOTTAG, 
+                :blntag AS BLNTAG, 
+                concat(1, '.', a.NO_PDAM, '.', a.PERIODE, '.', left((a.RK + a.NON_AIR + a.MATERAI), 4)) AS NOSERIAL,
+                NULL AS TGL_LUNAS, NULL AS TIME_LUNAS, 1 AS REK, 0 AS FLAG,
+                0 AS TRANSFER, a.LOKBAY_ID AS LOKBYR, 0 AS AKTIF
+                FROM spd_rekening a
+                JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+                JOIN spd_stgol c ON c.ID = a.STGOL_ID
+                LEFT JOIN (
+                    SELECT a.STLGN_ID, MAX(a.XANGSUR) AS XANGSUR, MAX(a.XRLANG + 1) AS XRLANG 
+                    FROM spd_rekang a
+                    WHERE date_format(a.TANGGAL, '%Y%m') = :periode_tagihan AND a.XANGSUR > 0
+                    GROUP BY a.STLGN_ID
+                ) d ON d.STLGN_ID = a.STLGN_ID
+                JOIN spd_lokbay e ON e.ID = a.LOKBAY_ID
+                WHERE a.PERIODE = :periode_tagihan AND a.`STATUS` NOT IN ('L') AND e.PPOB = 3 AND a.FLAG = 0
+            ";
+            $stmtPpobTag = $pdo->prepare($sqlPpobTagihan);
+            $stmtPpobTag->execute([
+                'blntag' => $nextPeriode,
+                'periode_tagihan' => $periodeBerjalan
+            ]);
+            $jmlPpobTagihan = $stmtPpobTag->rowCount();
+            $log("   - Insert Tagihan Rekening ke `pdam`.`ppob`: $jmlPpobTagihan baris.");
+
+            // 3. Insert Tunggakan ke pdam.ppob
+            $sqlPpobTunggakan = "
+                INSERT INTO `pdam`.ppob
+                SELECT a.NO_PDAM, b.NAMA, b.ALAMAT,
+                concat(c.KETERANGAN, ' (', a.STGOL_ID, ')') AS GOL,
+                ifnull(d.MTRINI, 0) AS MTRINI, ifnull(d.METERLALU, 0) AS METERLALU, ifnull(d.PAKAI, 0) AS PAKAI,
+                (a.AIR + a.MATERAI) AS TAGAIR, a.NON_AIR AS TAGNONAIR,
+                ifnull(concat('(', e.XANGSUR, '/', e.XRLANG, ')'), '') AS ANGS_KE, a.DENDA AS DENDA, a.SUBSIDI AS SUBSIDI, (a.JUMLAH - a.SUBSIDI) AS TOTTAG,
+                date_format(date_sub(a.REKENING_BULAN, INTERVAL -1 MONTH), '%Y%m') AS BLNTAG, 
+                concat(if(a.IS_YKK=1, 3, 2), '.', a.NO_PDAM, '.', date_format(a.REKENING_BULAN, '%Y%m'), '.', left(a.JUMLAH, 4)) AS NOSERIAL,
+                NULL AS TGL_LUNAS, NULL AS TIME_LUNAS, if(a.IS_YKK=1, 3, 2) AS REK, 0 AS FLAG,
+                0 AS TRANSFER, a.LOKBAY_ID AS LOKBYR, if(f.STATUS IN ('L'), 2, 0) AS AKTIF
+                FROM spd_tunggak a
+                JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+                JOIN spd_stgol c ON c.ID = a.STGOL_ID
+                LEFT JOIN (
+                    SELECT a.STLGN_ID, a.PERIODE, ifnull(a.EDITMETER, a.METER) AS MTRINI, a.METERLALU, a.VOLUME_TAGIHAN AS PAKAI
+                    FROM spd_rekening a
+                ) d ON d.STLGN_ID = a.STLGN_ID AND d.PERIODE = date_format(a.REKENING_BULAN, '%Y%m')
+                LEFT JOIN (
+                    SELECT a.STLGN_ID, MAX(a.XANGSUR) AS XANGSUR, MAX(a.XRLANG + 1) AS XRLANG, date_format(a.TANGGAL, '%Y%m') AS PERIODE
+                    FROM spd_rekang a
+                    WHERE a.XANGSUR > 0
+                    GROUP BY a.STLGN_ID, date_format(a.TANGGAL, '%Y%m')
+                ) e ON e.STLGN_ID = a.STLGN_ID AND e.PERIODE = date_format(a.REKENING_BULAN, '%Y%m')
+                LEFT JOIN (
+                    SELECT a.STLGN_ID, a.STATUS 
+                    FROM spd_rekening a 
+                    WHERE a.PERIODE = :periode_tagihan
+                ) f ON f.STLGN_ID = a.STLGN_ID
+                JOIN spd_lokbay g ON g.ID = b.LOKBAY_ID
+                WHERE a.LUNAS = 0 AND g.PPOB = 3 AND a.IS_DELETE = 0 AND a.PH IS NULL
+                GROUP BY a.REKENING_BULAN, a.STLGN_ID
+                ORDER BY a.REKENING_BULAN
+            ";
+            $stmtPpobTung = $pdo->prepare($sqlPpobTunggakan);
+            $stmtPpobTung->execute(['periode_tagihan' => $periodeBerjalan]);
+            $jmlPpobTunggakan = $stmtPpobTung->rowCount();
+            $log("   - Insert Tunggakan ke `pdam`.`ppob`: $jmlPpobTunggakan baris.");
+
+            // 4. Update Hankam
+            $stmtDelHankam = $pdo->prepare("DELETE FROM `pdam`.`hankam` WHERE PERIODE = :periode_tagihan");
+            $stmtDelHankam->execute(['periode_tagihan' => $periodeBerjalan]);
+
+            // Hankam LOKBAY_ID = 'A'
+            $sqlHankamA = "
+                INSERT INTO `pdam`.hankam (
+                    MATRA_KESATUAN, NAMA_SATKER, NOSAMB, NAMA, ALAMAT, KODE_GOL, GOLONGAN, PERIODE,
+                    STAN_LALU, STAN_KINI, STAN_ANGKAT, PAKAI, TAGIHAN, ADMINISTRASI, PEMELIHARAAN,
+                    MATERAI, ANGSURAN, TOTAL_TAGIHAN 
+                ) SELECT
+                    d.LOKASI, e.KETERANGAN, b.NO_PDAM, b.NAMA, b.ALAMAT, b.STGOL_ID, g.KETERANGAN, c.PERIODE,
+                    c.METERLALU, c.METER, c.EDITMETER, c.VOLUME_TAGIHAN, c.AIR, c.ADMINISTRASI, c.PEMELIHARAAN,
+                    c.MATERAI, c.NON_AIR, ( c.AIR + c.ADMINISTRASI + c.PEMELIHARAAN + c.MATERAI + c.NON_AIR ) 
+                FROM spd_rekening c
+                JOIN spd_stlgn b ON b.ID = c.STLGN_ID
+                JOIN spd_lokbay d ON d.ID = c.LOKBAY_ID
+                JOIN spd_stsatker e ON e.LOKBAY_ID = c.LOKBAY_ID
+                JOIN spd_tksatker f ON f.STSATKER_ID = e.ID AND f.STLGN_ID = b.ID
+                JOIN spd_stgol g ON g.ID = c.STGOL_ID 
+                WHERE c.PERIODE = :periode_tagihan AND c.LOKBAY_ID = 'A' AND c.STATUS != 'L'
+            ";
+            $stmtHA = $pdo->prepare($sqlHankamA);
+            $stmtHA->execute(['periode_tagihan' => $periodeBerjalan]);
+            $jmlHA = $stmtHA->rowCount();
+
+            // Hankam LOKBAY_ID = 'M' (AKMIL)
+            $sqlHankamM = "
+                INSERT INTO `pdam`.hankam (
+                    MATRA_KESATUAN, NAMA_SATKER, NOSAMB, NAMA, ALAMAT, KODE_GOL, GOLONGAN, PERIODE,
+                    STAN_LALU, STAN_KINI, STAN_ANGKAT, PAKAI, TAGIHAN, ADMINISTRASI, PEMELIHARAAN,
+                    MATERAI, ANGSURAN, TOTAL_TAGIHAN 
+                ) SELECT
+                    d.LOKASI, 'AKMIL', b.NO_PDAM, b.NAMA, b.ALAMAT, b.STGOL_ID, g.KETERANGAN, c.PERIODE,
+                    c.METERLALU, c.METER, c.EDITMETER, c.VOLUME_TAGIHAN, c.AIR, c.ADMINISTRASI, c.PEMELIHARAAN,
+                    c.MATERAI, c.NON_AIR, ( c.AIR + c.ADMINISTRASI + c.PEMELIHARAAN + c.MATERAI + c.NON_AIR ) 
+                FROM spd_rekening c
+                JOIN spd_stlgn b ON b.ID = c.STLGN_ID
+                JOIN spd_lokbay d ON d.ID = c.LOKBAY_ID
+                JOIN spd_stgol g ON g.ID = c.STGOL_ID 
+                WHERE c.PERIODE = :periode_tagihan AND c.LOKBAY_ID = 'M' AND c.STATUS != 'L'
+            ";
+            $stmtHM = $pdo->prepare($sqlHankamM);
+            $stmtHM->execute(['periode_tagihan' => $periodeBerjalan]);
+            $jmlHM = $stmtHM->rowCount();
+
+            // Hankam LOKBAY_ID = 'MA'
+            $sqlHankamMA = "
+                INSERT INTO `pdam`.hankam (
+                    MATRA_KESATUAN, NAMA_SATKER, NOSAMB, NAMA, ALAMAT, KODE_GOL, GOLONGAN, PERIODE,
+                    STAN_LALU, STAN_KINI, STAN_ANGKAT, PAKAI, TAGIHAN, ADMINISTRASI, PEMELIHARAAN,
+                    MATERAI, ANGSURAN, TOTAL_TAGIHAN 
+                ) SELECT
+                    d.LOKASI, e.KETERANGAN, b.NO_PDAM, b.NAMA, b.ALAMAT, b.STGOL_ID, g.KETERANGAN, c.PERIODE,
+                    c.METERLALU, c.METER, c.EDITMETER, c.VOLUME_TAGIHAN, c.AIR, c.ADMINISTRASI, c.PEMELIHARAAN,
+                    c.MATERAI, c.NON_AIR, ( c.AIR + c.ADMINISTRASI + c.PEMELIHARAAN + c.MATERAI + c.NON_AIR ) 
+                FROM spd_rekening c
+                JOIN spd_stlgn b ON b.ID = c.STLGN_ID
+                JOIN spd_lokbay d ON d.ID = c.LOKBAY_ID
+                JOIN spd_stsatker e ON e.LOKBAY_ID = c.LOKBAY_ID
+                JOIN spd_tksatker f ON f.STSATKER_ID = e.ID AND f.STLGN_ID = b.ID
+                JOIN spd_stgol g ON g.ID = c.STGOL_ID 
+                WHERE c.PERIODE = :periode_tagihan AND c.LOKBAY_ID = 'MA' AND c.STATUS != 'L'
+            ";
+            $stmtHMA = $pdo->prepare($sqlHankamMA);
+            $stmtHMA->execute(['periode_tagihan' => $periodeBerjalan]);
+            $jmlHMA = $stmtHMA->rowCount();
+
+            $totalHankam = $jmlHA + $jmlHM + $jmlHMA;
+            $log("   - Insert HANKAM (A: $jmlHA, M: $jmlHM, MA: $jmlHMA): Total $totalHankam baris.");
+
+            $pdo->commit();
+
+            $t3_end = date('Y-m-d H:i:s');
+            $pesanStep3 = "Transfer PPOB & Hankam berhasil. Tagihan Berjalan: $jmlPpobTagihan, Tunggakan: $jmlPpobTunggakan, Hankam: $totalHankam.";
+            $log("✓ $step3Name berhasil. $pesanStep3");
+
+            $ppobSummary = [
+                'tagihan_berjalan' => $jmlPpobTagihan,
+                'tunggakan' => $jmlPpobTunggakan,
+                'hankam_a' => $jmlHA,
+                'hankam_m' => $jmlHM,
+                'hankam_ma' => $jmlHMA,
+                'total_hankam' => $totalHankam
+            ];
+
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'SUCCESS', $t3_start, $t3_end, $pesanStep3, $ppobSummary);
+            $pipelineResult['steps'][3] = [
+                'name' => $step3Name,
+                'status' => 'SUCCESS',
+                'pesan' => $pesanStep3,
+                'data' => $ppobSummary
+            ];
+
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw new Exception("Gagal pada $step3Name: " . $e->getMessage());
+        }
 
         // -------------------------------------------------------------
         // TAHAP 4: PELUNASAN RUMAH IBADAH (KUERI MENYUSUL)
