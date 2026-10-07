@@ -2186,7 +2186,7 @@ const pipelineStatusBadge = document.getElementById('pipeline-status-badge');
 let pipelineLiveTimerInterval = null;
 let pipelinePollerInterval = null;
 let pipelineStartTimestamp = null;
-let isManualPipelineReset = false;
+let isManualPipelineReset = localStorage.getItem('pipeline_view_standby') === '1';
 
 const stepNamesDef = [
     'Tahap 0: Set Mode Maintenance (OFFLINE = 0)',
@@ -2324,6 +2324,18 @@ function resetAllStepCards() {
         pipelineLiveIndicator.textContent = 'IDLE';
         pipelineLiveIndicator.className = 'badge badge-secondary';
     }
+    if (pipelineStatusBadge) {
+        pipelineStatusBadge.innerHTML = '<i class="ph ph-shield-check"></i> Siap Eksekusi';
+        pipelineStatusBadge.className = 'badge badge-purple';
+    }
+    const pipelineQueryTicker = document.getElementById('pipeline-query-ticker');
+    const pipelineTableBadge = document.getElementById('pipeline-active-table-badge');
+    if (pipelineQueryTicker) {
+        pipelineQueryTicker.textContent = 'Standby: Menunggu eksekusi pipeline...';
+    }
+    if (pipelineTableBadge) {
+        pipelineTableBadge.textContent = 'Tabel: -';
+    }
     updatePipelineProgressUI(-1, 'STANDBY', 'Standby: Menunggu Eksekusi', false);
     stopPipelineStopwatch();
     const timerBadge = document.getElementById('pipeline-live-timer');
@@ -2381,9 +2393,12 @@ async function loadPipelineLogs() {
             const isAnyRunning = json.batches.some(b => b.status === 'RUNNING');
             if (isAnyRunning) {
                 isManualPipelineReset = false;
+                localStorage.removeItem('pipeline_view_standby');
             }
 
-            if (isManualPipelineReset && !isAnyRunning) {
+            const isStandbyActive = (isManualPipelineReset || localStorage.getItem('pipeline_view_standby') === '1') && !isAnyRunning;
+
+            if (isStandbyActive) {
                 resetAllStepCards();
             } else if (latestBatch && latestBatch.steps) {
                 if (pipelineBatchIdBadge) {
@@ -2489,6 +2504,9 @@ async function runMasterPipeline() {
     }
 
     if (!btnRunMasterPipeline) return;
+
+    localStorage.removeItem('pipeline_view_standby');
+    isManualPipelineReset = false;
 
     btnRunMasterPipeline.disabled = true;
     btnRunMasterPipeline.classList.add('btn-loading');
@@ -2640,6 +2658,7 @@ if (btnResetPipelineStepper) {
             const res = await fetch('api.php?action=reset_pipeline_status', { method: 'POST' });
             const json = await res.json();
             if (json.status === 'success') {
+                localStorage.setItem('pipeline_view_standby', '1');
                 isManualPipelineReset = true;
                 resetAllStepCards();
                 if (pipelineConsoleOutput) {
