@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=42">
+    <link rel="stylesheet" href="styles.css?v=46">
 </head>
 <body>
     <div class="app-container">
@@ -54,6 +54,54 @@
                 </button>
             </nav>
 
+            <!-- Sidebar Server Health & Resource Monitor Card -->
+            <div class="sidebar-server-monitor" id="sidebar-server-monitor">
+                <div class="sidebar-monitor-header">
+                    <div class="monitor-title">
+                        <i class="ph ph-hard-drives"></i>
+                        <span>Server Storage</span>
+                    </div>
+                    <span class="badge badge-success" id="sidebar-status-badge" style="font-size: 0.62rem; padding: 1px 6px;">Online</span>
+                </div>
+
+                <div class="sidebar-monitor-metrics">
+                    <!-- Storage / Disk -->
+                    <div class="sidebar-metric-row">
+                        <div class="metric-row-header">
+                            <span class="row-label"><i class="ph ph-hard-drive"></i> Sisa Disk</span>
+                            <span class="row-val" id="sidebar-disk-text"><strong id="sidebar-disk-free">-- GB</strong> Free</span>
+                        </div>
+                        <div class="sidebar-metric-progress">
+                            <div class="sidebar-progress-fill" id="sidebar-disk-fill" style="width: 0%;"></div>
+                        </div>
+                        <div class="metric-row-sub" id="sidebar-disk-sub">Terpakai: -- GB dari -- GB</div>
+                    </div>
+
+                    <!-- RAM Usage -->
+                    <div class="sidebar-metric-row">
+                        <div class="metric-row-header">
+                            <span class="row-label"><i class="ph ph-cpu"></i> Memori RAM</span>
+                            <span class="row-val" id="sidebar-ram-text">-- / -- GB</span>
+                        </div>
+                        <div class="sidebar-metric-progress">
+                            <div class="sidebar-progress-fill ram" id="sidebar-ram-fill" style="width: 0%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- CPU & Database Quick Stats -->
+                    <div class="sidebar-metric-mini-grid">
+                        <div class="mini-stat-card">
+                            <span class="mini-stat-label"><i class="ph ph-activity"></i> CPU</span>
+                            <span class="mini-stat-val" id="sidebar-cpu-text">--%</span>
+                        </div>
+                        <div class="mini-stat-card">
+                            <span class="mini-stat-label"><i class="ph ph-database"></i> Database</span>
+                            <span class="mini-stat-val" id="sidebar-db-text">-- GB</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="avatar">A</div>
@@ -70,86 +118,6 @@
             <header class="topbar">
                 <h1 id="page-title">Rencana Beli YKK</h1>
                 <div class="topbar-actions">
-                    <!-- Server Resource Metrics Capsule -->
-                    <div class="server-metrics-widget" id="server-metrics-widget" title="Klik untuk rincian performa & storage server">
-                        <div class="server-metric-item" id="metric-disk-pill">
-                            <i class="ph ph-hard-drives"></i>
-                            <div class="metric-text-group">
-                                <span class="metric-label">DISK</span>
-                                <span class="metric-value"><strong id="metric-disk-free">-- GB</strong> Free</span>
-                            </div>
-                            <div class="metric-mini-bar"><div class="metric-mini-fill" id="metric-disk-bar" style="width: 0%;"></div></div>
-                        </div>
-                        <div class="server-metric-item" id="metric-ram-pill">
-                            <i class="ph ph-cpu"></i>
-                            <div class="metric-text-group">
-                                <span class="metric-label">RAM</span>
-                                <span class="metric-value" id="metric-ram-val">-- / --</span>
-                            </div>
-                            <div class="metric-mini-bar"><div class="metric-mini-fill" id="metric-ram-bar" style="width: 0%;"></div></div>
-                        </div>
-                        <div class="server-metric-item" id="metric-cpu-pill">
-                            <i class="ph ph-activity"></i>
-                            <div class="metric-text-group">
-                                <span class="metric-label">CPU</span>
-                                <span class="metric-value" id="metric-cpu-val">--%</span>
-                            </div>
-                            <div class="metric-mini-bar"><div class="metric-mini-fill" id="metric-cpu-bar" style="width: 0%;"></div></div>
-                        </div>
-
-                        <!-- Dropdown Diagnostics Detail Popover -->
-                        <div class="server-metrics-popover" id="server-metrics-popover">
-                            <div class="popover-header">
-                                <h4><i class="ph ph-gauge"></i> Kesehatan Server & Resource</h4>
-                                <span class="badge badge-success" id="server-health-badge">Online</span>
-                            </div>
-                            <div class="popover-grid">
-                                <div class="popover-metric-box">
-                                    <span class="box-label"><i class="ph ph-hard-drive"></i> Kapasitas Penyimpanan</span>
-                                    <div class="box-val-row">
-                                        <span class="box-main-val" id="popover-disk-used">-- GB</span>
-                                        <span class="box-sub" id="popover-disk-total">dari -- GB</span>
-                                    </div>
-                                    <div class="popover-progress"><div class="popover-progress-fill" id="popover-disk-bar" style="width: 0%;"></div></div>
-                                    <span class="box-hint" id="popover-disk-hint">Sisa Bebas: -- GB (--%)</span>
-                                </div>
-                                <div class="popover-metric-box">
-                                    <span class="box-label"><i class="ph ph-cpu"></i> Memori RAM</span>
-                                    <div class="box-val-row">
-                                        <span class="box-main-val" id="popover-ram-used">-- GB</span>
-                                        <span class="box-sub" id="popover-ram-total">dari -- GB</span>
-                                    </div>
-                                    <div class="popover-progress"><div class="popover-progress-fill" id="popover-ram-bar" style="width: 0%;"></div></div>
-                                    <span class="box-hint" id="popover-ram-hint">Tersedia Bebas: -- GB</span>
-                                </div>
-                                <div class="popover-metric-box">
-                                    <span class="box-label"><i class="ph ph-activity"></i> Beban Prosesor (CPU)</span>
-                                    <div class="box-val-row">
-                                        <span class="box-main-val" id="popover-cpu-val">--%</span>
-                                        <span class="box-sub" id="popover-cpu-cores">-- Cores</span>
-                                    </div>
-                                    <div class="popover-progress"><div class="popover-progress-fill" id="popover-cpu-bar" style="width: 0%;"></div></div>
-                                    <span class="box-hint" id="popover-cpu-load">Load Avg: -- / -- / --</span>
-                                </div>
-                                <div class="popover-metric-box">
-                                    <span class="box-label"><i class="ph ph-database"></i> Database & Jaringan</span>
-                                    <div class="box-val-row">
-                                        <span class="box-main-val" id="popover-db-size">DB: --</span>
-                                        <span class="box-sub" id="popover-db-threads">-- Koneksi</span>
-                                    </div>
-                                    <div class="box-hint" id="popover-net-hint">Traffic: RX -- | TX --</div>
-                                    <span class="box-hint" id="popover-db-uptime">MySQL Uptime: -- Jam</span>
-                                </div>
-                            </div>
-                            <div class="popover-footer">
-                                <span id="popover-server-time"><i class="ph ph-clock"></i> Server Time: --</span>
-                                <button type="button" class="btn-popover-refresh" id="btn-refresh-metrics">
-                                    <i class="ph ph-arrows-clockwise"></i> Perbarui
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
                     <div class="date-picker-group">
                         <div class="date-picker-box" title="Pilih Tanggal">
                             <i class="ph ph-calendar"></i>
@@ -1082,6 +1050,6 @@
         </main>
     </div>
 
-    <script src="app.js?v=45"></script>
+    <script src="app.js?v=46"></script>
 </body>
 </html>
