@@ -1334,7 +1334,91 @@ if ($action === 'beli' || $action === 'batal') {
         http_response_code(500);
         echo json_encode(["status" => "error", "message" => $e->getMessage()]);
     }
+} elseif ($action === 'switch_db_server') {
+    try {
+        $target = strtolower(trim($_POST['target'] ?? $_GET['target'] ?? ''));
+
+        $serverPresets = [
+            'simpam' => [
+                'host' => '192.168.0.10',
+                'port' => 3306,
+                'user' => 'root',
+                'pass' => 'xyz123',
+                'name' => 'simpadu',
+                'label' => 'SIMPAM (Development)',
+                'env_type' => 'Development'
+            ],
+            'simpadu' => [
+                'host' => '192.168.8.11',
+                'port' => 3306,
+                'user' => 'root',
+                'pass' => 'xyz123',
+                'name' => 'simpadu',
+                'label' => 'SIMPADU (Production)',
+                'env_type' => 'Production'
+            ],
+            'localhost' => [
+                'host' => '127.0.0.1',
+                'port' => 3306,
+                'user' => 'root',
+                'pass' => 'xyz123',
+                'name' => 'simpadu',
+                'label' => 'Localhost (127.0.0.1)',
+                'env_type' => 'Local'
+            ]
+        ];
+
+        // Also allow passing direct IP
+        if ($target === '192.168.0.10') $target = 'simpam';
+        if ($target === '192.168.8.11') $target = 'simpadu';
+        if ($target === '127.0.0.1') $target = 'localhost';
+
+        if (!isset($serverPresets[$target])) {
+            throw new Exception("Preset server '$target' tidak valid. Pilihan yang tersedia: 'simpam' atau 'simpadu'.");
+        }
+
+        $preset = $serverPresets[$target];
+
+        // Pre-flight connection test (timeout 3 seconds)
+        $testDsn = "mysql:host={$preset['host']};port={$preset['port']};dbname={$preset['name']};charset=utf8mb4";
+        $testOptions = [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_TIMEOUT => 3
+        ];
+
+        try {
+            $testPdo = new PDO($testDsn, $preset['user'], $preset['pass'], $testOptions);
+            $testPdo->query("SELECT 1");
+        } catch (\PDOException $pe) {
+            throw new Exception("Gagal terhubung ke {$preset['label']} ({$preset['host']}): " . $pe->getMessage());
+        }
+
+        // Tulis konfigurasi baru ke file .env
+        $envContent = "# Database Configuration\n" .
+                      "DB_HOST=" . $preset['host'] . "\n" .
+                      "DB_USER=" . $preset['user'] . "\n" .
+                      "DB_PASS=" . $preset['pass'] . "\n" .
+                      "DB_NAME=" . $preset['name'] . "\n" .
+                      "PORT=" . $preset['port'] . "\n";
+
+        file_put_contents($envFile, $envContent);
+
+        echo json_encode([
+            "status" => "success",
+            "message" => "Berhasil beralih ke {$preset['label']}",
+            "target" => $target,
+            "host" => $preset['host'],
+            "label" => $preset['label'],
+            "env_type" => $preset['env_type']
+        ]);
+    } catch (Exception $e) {
+        http_response_code(400);
+        echo json_encode([
+            "status" => "error",
+            "message" => $e->getMessage()
+        ]);
+    }
 } else {
-    echo json_encode(["message" => "Welcome to API. Use ?action=beli, ?action=batal, ?action=dibeli, ?action=get_config, ?action=get_logs, ?action=get_backups, ?action=run_backup, ?action=run_restore, ?action=run_pipeline, ?action=get_pipeline_logs, or ?action=get_server_metrics"]);
+    echo json_encode(["message" => "Welcome to API. Use ?action=beli, ?action=batal, ?action=dibeli, ?action=get_config, ?action=get_logs, ?action=get_backups, ?action=run_backup, ?action=run_restore, ?action=run_pipeline, ?action=get_pipeline_logs, ?action=get_server_metrics, or ?action=switch_db_server"]);
 }
 

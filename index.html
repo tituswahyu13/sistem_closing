@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=46">
+    <link rel="stylesheet" href="styles.css?v=48">
 </head>
 <body>
     <div class="app-container">
@@ -140,11 +140,19 @@
             <header class="topbar">
                 <h1 id="page-title">Rencana Beli YKK</h1>
                 <div class="topbar-actions">
-                    <!-- Active DB Badge in Topbar -->
-                    <div class="topbar-db-pill" id="topbar-db-badge" title="Klik untuk membuka Diagnostik Server & Database">
-                        <i class="ph ph-database"></i>
-                        <span id="topbar-db-name">DB: SIMPAM</span>
-                        <span class="topbar-ping-badge" id="topbar-db-ping">...</span>
+                    <!-- Segmented Server Switcher in Topbar -->
+                    <div class="topbar-server-switcher" id="topbar-server-switcher" title="Klik untuk beralih target database server">
+                        <button type="button" class="server-btn active" id="btn-switch-simpam" data-server="simpam" title="Beralih ke Server SIMPAM (Development)">
+                            <span class="server-btn-dot dot-dev"></span>
+                            <span class="server-btn-name">SIMPAM</span>
+                            <span class="server-btn-tag tag-dev">Dev</span>
+                        </button>
+                        <button type="button" class="server-btn" id="btn-switch-simpadu" data-server="simpadu" title="Beralih ke Server SIMPADU (Production Live)">
+                            <span class="server-btn-dot dot-prod"></span>
+                            <span class="server-btn-name">SIMPADU</span>
+                            <span class="server-btn-tag tag-prod">Prod</span>
+                        </button>
+                        <span class="server-ping-badge" id="topbar-db-ping" title="Latency Koneksi Database">...</span>
                     </div>
 
                     <div class="date-picker-group">
@@ -1093,6 +1101,46 @@
                     <!-- Scrollable Modal Body -->
                     <div class="diag-modal-body" style="overflow-y: auto; padding-right: 0.35rem; display: flex; flex-direction: column; gap: 1.1rem;">
                         
+                        <!-- 0. Alihkan Target Database Server -->
+                        <div class="diag-section diag-switch-section">
+                            <h4 class="diag-section-title" style="color: #a5b4fc;"><i class="ph ph-swap"></i> Alihkan Target Database Server</h4>
+                            <div class="diag-grid-2">
+                                <div class="diag-server-card active" id="diag-card-simpam">
+                                    <div class="server-card-hdr">
+                                        <div class="server-card-name">
+                                            <span class="server-dot dot-dev"></span>
+                                            <strong>SIMPAM</strong>
+                                        </div>
+                                        <span class="badge badge-dev">Development</span>
+                                    </div>
+                                    <div class="server-card-meta">
+                                        <span>Host: <code>192.168.0.10:3306</code></span>
+                                        <span>Database: <code>simpadu</code></span>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-server-target active" id="btn-diag-switch-simpam" data-server="simpam">
+                                        <i class="ph ph-check-circle"></i> Server Aktif
+                                    </button>
+                                </div>
+
+                                <div class="diag-server-card" id="diag-card-simpadu">
+                                    <div class="server-card-hdr">
+                                        <div class="server-card-name">
+                                            <span class="server-dot dot-prod"></span>
+                                            <strong>SIMPADU</strong>
+                                        </div>
+                                        <span class="badge badge-prod">Live Production</span>
+                                    </div>
+                                    <div class="server-card-meta">
+                                        <span>Host: <code>192.168.8.11:3306</code></span>
+                                        <span>Database: <code>simpadu</code></span>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-server-target" id="btn-diag-switch-simpadu" data-server="simpadu">
+                                        <i class="ph ph-arrow-right"></i> Beralih ke SIMPADU
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- 1. Koneksi Database & Server -->
                         <div class="diag-section">
                             <h4 class="diag-section-title"><i class="ph ph-database"></i> 1. Koneksi & Informasi Database</h4>
@@ -1211,6 +1259,6 @@
         </main>
     </div>
 
-    <script src="app.js?v=47"></script>
+    <script src="app.js?v=48"></script>
 </body>
 </html>

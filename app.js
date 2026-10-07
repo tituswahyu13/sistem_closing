@@ -2639,6 +2639,11 @@ async function loadServerMetrics(showFeedback = false) {
 
         lastMetricsData = json;
 
+        // Determine active server key
+        const isSimpadu = (json.database && (json.database.host === '192.168.8.11' || json.database.env_type === 'Production'));
+        const activeServerKey = isSimpadu ? 'simpadu' : 'simpam';
+        updateServerSwitcherUI(activeServerKey);
+
         // 1. Sidebar Elements
         const diskFreeEl = document.getElementById('sidebar-disk-free');
         const diskFillEl = document.getElementById('sidebar-disk-fill');
@@ -2653,15 +2658,13 @@ async function loadServerMetrics(showFeedback = false) {
         const conflictPillEl = document.getElementById('sidebar-conflict-pill');
         const conflictTextEl = document.getElementById('sidebar-conflict-text');
 
-        // Topbar Elements
-        const topbarDbNameEl = document.getElementById('topbar-db-name');
+        // Topbar Ping
         const topbarDbPingEl = document.getElementById('topbar-db-ping');
 
         // Database info
         if (json.database) {
             const labelStr = json.database.label || `${json.database.host}:${json.database.port}`;
             if (dbLabelEl) dbLabelEl.textContent = `DB: ${labelStr}`;
-            if (topbarDbNameEl) topbarDbNameEl.textContent = `DB: ${labelStr.split(' ')[0]}`;
             if (topbarDbPingEl) topbarDbPingEl.textContent = `${json.database.ping_ms || 0} ms`;
             if (dbTextEl) dbTextEl.textContent = json.database.size_formatted;
         }
@@ -2844,13 +2847,126 @@ function updateDiagnosticsModalUI(json) {
     if (diagLastSync) diagLastSync.textContent = json.server_time || '-';
 }
 
+// ==========================================================================
+// Server Switcher Handlers & Modal Interactions
+// ==========================================================================
+let currentActiveServerKey = 'simpam';
+
+function updateServerSwitcherUI(activeKey) {
+    currentActiveServerKey = activeKey;
+
+    const btnSimpam = document.getElementById('btn-switch-simpam');
+    const btnSimpadu = document.getElementById('btn-switch-simpadu');
+    const cardSimpam = document.getElementById('diag-card-simpam');
+    const cardSimpadu = document.getElementById('diag-card-simpadu');
+    const btnDiagSimpam = document.getElementById('btn-diag-switch-simpam');
+    const btnDiagSimpadu = document.getElementById('btn-diag-switch-simpadu');
+
+    if (activeKey === 'simpadu') {
+        if (btnSimpam) btnSimpam.classList.remove('active');
+        if (btnSimpadu) btnSimpadu.classList.add('active');
+
+        if (cardSimpam) cardSimpam.classList.remove('active');
+        if (cardSimpadu) cardSimpadu.classList.add('active');
+
+        if (btnDiagSimpam) {
+            btnDiagSimpam.className = 'btn btn-sm btn-server-target';
+            btnDiagSimpam.innerHTML = '<i class="ph ph-arrow-right"></i> Beralih ke SIMPAM';
+        }
+        if (btnDiagSimpadu) {
+            btnDiagSimpadu.className = 'btn btn-sm btn-server-target active';
+            btnDiagSimpadu.innerHTML = '<i class="ph ph-check-circle"></i> Server Aktif (Production)';
+        }
+    } else {
+        if (btnSimpam) btnSimpam.classList.add('active');
+        if (btnSimpadu) btnSimpadu.classList.remove('active');
+
+        if (cardSimpam) cardSimpam.classList.add('active');
+        if (cardSimpadu) cardSimpadu.classList.remove('active');
+
+        if (btnDiagSimpam) {
+            btnDiagSimpam.className = 'btn btn-sm btn-server-target active';
+            btnDiagSimpam.innerHTML = '<i class="ph ph-check-circle"></i> Server Aktif (Development)';
+        }
+        if (btnDiagSimpadu) {
+            btnDiagSimpadu.className = 'btn btn-sm btn-server-target';
+            btnDiagSimpadu.innerHTML = '<i class="ph ph-arrow-right"></i> Beralih ke SIMPADU';
+        }
+    }
+}
+
+async function executeServerSwitch(targetServer) {
+    if (targetServer === currentActiveServerKey) {
+        return;
+    }
+
+    if (targetServer === 'simpadu') {
+        const ok = confirm("⚠️ PERINGATAN: BERALIH KE DATABASE LIVE PRODUCTION!\n\n" +
+            "Anda akan menghubungkan aplikasi Sistem Closing ke Server SIMPADU (192.168.8.11).\n" +
+            "Semua proses baca data, estimasi, dan eksekusi closing akan langsung berjalan pada database live produksi.\n\n" +
+            "Apakah Anda yakin ingin beralih ke Server SIMPADU?");
+        if (!ok) return;
+    } else {
+        const ok = confirm("Beralih ke Server SIMPAM (192.168.0.10) - Development Server?\n\nAplikasi akan terhubung kembali ke lingkungan database pengujian/development.");
+        if (!ok) return;
+    }
+
+    const btnDiagSimpam = document.getElementById('btn-diag-switch-simpam');
+    const btnDiagSimpadu = document.getElementById('btn-diag-switch-simpadu');
+    const clickedDiagBtn = targetServer === 'simpadu' ? btnDiagSimpadu : btnDiagSimpam;
+
+    if (clickedDiagBtn) {
+        clickedDiagBtn.innerHTML = '<i class="ph ph-spinner-gap ph-spin"></i> Menghubungkan...';
+        clickedDiagBtn.disabled = true;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('target', targetServer);
+
+        const res = await fetch('api.php?action=switch_db_server', {
+            method: 'POST',
+            body: formData
+        });
+
+        const json = await res.json();
+        if (!res.ok || json.status !== 'success') {
+            throw new Error(json.message || 'Gagal mengubah konfigurasi database');
+        }
+
+        currentActiveServerKey = targetServer;
+
+        // Reload metrics
+        await loadServerMetrics(true);
+
+        // Reload current tab data
+        if (typeof loadData === 'function') {
+            loadData(false);
+        }
+        if (typeof loadPipelineLogs === 'function') {
+            loadPipelineLogs();
+        }
+        if (typeof loadBackupData === 'function') {
+            loadBackupData();
+        }
+
+        alert(`✅ ${json.message}\nSemua modul Sistem Closing kini aktif terhubung ke ${json.label}.`);
+
+    } catch (e) {
+        alert(`❌ Gagal Beralih Server Database:\n${e.message}`);
+    } finally {
+        if (clickedDiagBtn) clickedDiagBtn.disabled = false;
+        updateServerSwitcherUI(currentActiveServerKey);
+    }
+}
+
 // Modal Diagnostics Handlers
 const modalDiagnostics = document.getElementById('modal-server-diagnostics');
 const btnCloseDiagModal = document.getElementById('btn-close-diag-modal');
 const btnCloseDiagAction = document.getElementById('btn-close-diag-action');
 const btnRefreshDiag = document.getElementById('btn-refresh-diag');
 const sidebarServerMonitor = document.getElementById('sidebar-server-monitor');
-const topbarDbBadge = document.getElementById('topbar-db-badge');
+const topbarServerSwitcher = document.getElementById('topbar-server-switcher');
 
 function openDiagnosticsModal() {
     if (modalDiagnostics) {
@@ -2868,9 +2984,6 @@ function closeDiagnosticsModal() {
 if (sidebarServerMonitor) {
     sidebarServerMonitor.addEventListener('click', openDiagnosticsModal);
 }
-if (topbarDbBadge) {
-    topbarDbBadge.addEventListener('click', openDiagnosticsModal);
-}
 if (btnCloseDiagModal) {
     btnCloseDiagModal.addEventListener('click', closeDiagnosticsModal);
 }
@@ -2885,6 +2998,37 @@ if (modalDiagnostics) {
         if (e.target === modalDiagnostics) {
             closeDiagnosticsModal();
         }
+    });
+}
+
+// Switcher Button Listeners
+const btnSwitchSimpam = document.getElementById('btn-switch-simpam');
+const btnSwitchSimpadu = document.getElementById('btn-switch-simpadu');
+const btnDiagSwitchSimpam = document.getElementById('btn-diag-switch-simpam');
+const btnDiagSwitchSimpadu = document.getElementById('btn-diag-switch-simpadu');
+
+if (btnSwitchSimpam) {
+    btnSwitchSimpam.addEventListener('click', (e) => {
+        e.stopPropagation();
+        executeServerSwitch('simpam');
+    });
+}
+if (btnSwitchSimpadu) {
+    btnSwitchSimpadu.addEventListener('click', (e) => {
+        e.stopPropagation();
+        executeServerSwitch('simpadu');
+    });
+}
+if (btnDiagSwitchSimpam) {
+    btnDiagSwitchSimpam.addEventListener('click', (e) => {
+        e.stopPropagation();
+        executeServerSwitch('simpam');
+    });
+}
+if (btnDiagSwitchSimpadu) {
+    btnDiagSwitchSimpadu.addEventListener('click', (e) => {
+        e.stopPropagation();
+        executeServerSwitch('simpadu');
     });
 }
 

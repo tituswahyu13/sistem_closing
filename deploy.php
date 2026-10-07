@@ -68,7 +68,7 @@ writeDeployLog("MEMULAI AUTO-DEPLOY (Commit: '$commitMsg' oleh $author)...", $lo
 // 3. Eksekusi git pull di direktori aplikasi
 $output = [];
 $returnVar = 0;
-$cmd = "cd " . escapeshellarg(__DIR__) . " && git stash 2>/dev/null; git pull origin main 2>&1";
+$cmd = "cd " . escapeshellarg(__DIR__) . " && cp .env .env.deploy_bak 2>/dev/null; git stash 2>/dev/null; git pull origin main 2>&1; cp .env.deploy_bak .env 2>/dev/null";
 exec($cmd, $output, $returnVar);
 
 $resultText = implode("\n", $output);
