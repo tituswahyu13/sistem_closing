@@ -24,6 +24,13 @@ if (!function_exists('str_ends_with')) {
     }
 }
 
+// Session initialization
+if (session_status() === PHP_SESSION_NONE) {
+    ini_set('session.cookie_httponly', 1);
+    ini_set('session.use_only_cookies', 1);
+    session_start();
+}
+
 // Simple .env parser
 $envFile = __DIR__ . '/.env';
 $env = file_exists($envFile) ? parse_ini_file($envFile) : [];
@@ -32,6 +39,70 @@ $db   = !empty($env['DB_NAME']) ? $env['DB_NAME'] : 'simpadu';
 $user = !empty($env['DB_USER']) ? $env['DB_USER'] : 'root';
 $pass = array_key_exists('DB_PASS', $env) ? $env['DB_PASS'] : '';
 $port = !empty($env['PORT']) ? $env['PORT'] : '3306';
+
+// Auth credentials from .env
+$authUsername = !empty($env['AUTH_USERNAME']) ? $env['AUTH_USERNAME'] : 'admin';
+$authPassword = !empty($env['AUTH_PASSWORD']) ? $env['AUTH_PASSWORD'] : 'adminclosing2026';
+$authPin      = !empty($env['AUTH_PIN']) ? $env['AUTH_PIN'] : '199407';
+$sessionTimeoutMinutes = !empty($env['SESSION_TIMEOUT_MINUTES']) ? intval($env['SESSION_TIMEOUT_MINUTES']) : 60;
+
+function logUserAudit($pdo, $username, $action, $details = '') {
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS closing_audit_log (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(100) NOT NULL,
+                action VARCHAR(100) NOT NULL,
+                details TEXT NULL,
+                ip_address VARCHAR(50) NULL,
+                user_agent VARCHAR(255) NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+        $stmt = $pdo->prepare("
+            INSERT INTO closing_audit_log (username, action, details, ip_address, user_agent, created_at)
+            VALUES (:user, :act, :det, :ip, :ua, NOW())
+        ");
+        $stmt->execute([
+            'user' => $username,
+            'act' => $action,
+            'det' => $details,
+            'ip' => $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1',
+            'ua' => substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 250)
+        ]);
+    } catch (Exception $e) {
+        // Skip on error
+    }
+}
+
+function getAuthenticatedUser($sessionTimeoutMinutes) {
+    if (empty($_SESSION['auth_user'])) {
+        if (!empty($_COOKIE['closing_remember_token'])) {
+            $token = $_COOKIE['closing_remember_token'];
+            if ($token === md5('SIMPADU_CLOSING_REMEMBER_SECRET')) {
+                $_SESSION['auth_user'] = [
+                    'username' => 'admin',
+                    'role' => 'Administrator Closing',
+                    'login_time' => date('Y-m-d H:i:s'),
+                    'login_type' => 'REMEMBER_TOKEN'
+                ];
+                $_SESSION['last_activity'] = time();
+                return $_SESSION['auth_user'];
+            }
+        }
+        return null;
+    }
+
+    $lastActive = $_SESSION['last_activity'] ?? 0;
+    if ((time() - $lastActive) > ($sessionTimeoutMinutes * 60)) {
+        unset($_SESSION['auth_user']);
+        unset($_SESSION['last_activity']);
+        return null;
+    }
+
+    $_SESSION['last_activity'] = time();
+    return $_SESSION['auth_user'];
+}
 
 $charset = 'utf8mb4';
 $dsn = "mysql:host=$host;port=$port;dbname=$db;charset=$charset";
@@ -51,6 +122,115 @@ try {
 
 $action = $_GET['action'] ?? '';
 $periode = $_GET['periode'] ?? '202607';
+
+if ($action === 'check_session') {
+    $currentUser = getAuthenticatedUser($sessionTimeoutMinutes);
+    if ($currentUser) {
+        $remainingSeconds = max(0, ($sessionTimeoutMinutes * 60) - (time() - ($_SESSION['last_activity'] ?? time())));
+        echo json_encode([
+            "status" => "success",
+            "authenticated" => true,
+            "user" => $currentUser,
+            "session_timeout_seconds" => $sessionTimeoutMinutes * 60,
+            "remaining_seconds" => $remainingSeconds
+        ]);
+    } else {
+        echo json_encode([
+            "status" => "unauthenticated",
+            "authenticated" => false,
+            "message" => "Sesi belum aktif atau telah kedaluwarsa."
+        ]);
+    }
+    exit;
+} elseif ($action === 'login') {
+    $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+    $loginType = $input['login_type'] ?? 'password';
+    $inputUsername = trim($input['username'] ?? '');
+    $inputPassword = trim($input['password'] ?? '');
+    $inputPin = trim($input['pin'] ?? '');
+    $rememberMe = !empty($input['remember_me']);
+
+    $isValid = false;
+    $loggedInName = '';
+    $userRole = 'Operator Closing';
+
+    if ($loginType === 'pin') {
+        if ($inputPin === $authPin) {
+            $isValid = true;
+            $loggedInName = 'Operator (PIN)';
+            $userRole = 'Authorized Operator';
+        }
+    } else {
+        if ($inputUsername === $authUsername && $inputPassword === $authPassword) {
+            $isValid = true;
+            $loggedInName = $inputUsername;
+            $userRole = 'System Administrator';
+        }
+    }
+
+    if ($isValid) {
+        $_SESSION['auth_user'] = [
+            'username' => $loggedInName,
+            'role' => $userRole,
+            'login_time' => date('Y-m-d H:i:s'),
+            'login_type' => strtoupper($loginType)
+        ];
+        $_SESSION['last_activity'] = time();
+
+        if ($rememberMe) {
+            setcookie('closing_remember_token', md5('SIMPADU_CLOSING_REMEMBER_SECRET'), time() + (86400 * 30), '/');
+        }
+
+        logUserAudit($pdo, $loggedInName, 'LOGIN', 'Berhasil login via ' . strtoupper($loginType));
+
+        echo json_encode([
+            "status" => "success",
+            "message" => "Login berhasil! Selamat datang, " . $loggedInName . ".",
+            "user" => $_SESSION['auth_user'],
+            "session_timeout_seconds" => $sessionTimeoutMinutes * 60
+        ]);
+    } else {
+        http_response_code(401);
+        logUserAudit($pdo, $inputUsername ?: 'PIN_USER', 'LOGIN_FAILED', 'Gagal login via ' . strtoupper($loginType));
+        echo json_encode([
+            "status" => "error",
+            "message" => ($loginType === 'pin') ? "PIN Operator tidak sesuai." : "Username atau password salah."
+        ]);
+    }
+    exit;
+} elseif ($action === 'logout') {
+    $loggedUser = $_SESSION['auth_user']['username'] ?? 'User';
+    logUserAudit($pdo, $loggedUser, 'LOGOUT', 'User keluar dari sistem');
+    
+    $_SESSION = [];
+    if (ini_get("session.use_cookies")) {
+        $params = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000,
+            $params["path"], $params["domain"],
+            $params["secure"], $params["httponly"]
+        );
+    }
+    setcookie('closing_remember_token', '', time() - 3600, '/');
+    session_destroy();
+
+    echo json_encode([
+        "status" => "success",
+        "message" => "Anda telah berhasil logout."
+    ]);
+    exit;
+} elseif ($action === 'get_audit_logs') {
+    try {
+        $stmt = $pdo->query("SELECT * FROM closing_audit_log ORDER BY id DESC LIMIT 50");
+        $logs = $stmt ? $stmt->fetchAll() : [];
+        echo json_encode([
+            "status" => "success",
+            "data" => $logs
+        ]);
+    } catch (Exception $e) {
+        echo json_encode(["status" => "success", "data" => []]);
+    }
+    exit;
+}
 
 $year = intval(substr($periode, 0, 4));
 $month = intval(substr($periode, 4, 2)) + 1;

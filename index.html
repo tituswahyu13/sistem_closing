@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=53">
+    <link rel="stylesheet" href="styles.css?v=54">
 </head>
 <body>
     <div class="app-container">
@@ -128,14 +128,17 @@
                 </div>
             </div>
 
-            <div class="sidebar-footer">
+            <div class="sidebar-footer" style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
                 <div class="user-info">
-                    <div class="avatar">A</div>
+                    <div class="avatar" id="sidebar-user-avatar">A</div>
                     <div class="details">
-                        <span class="name">Admin User</span>
-                        <span class="role">System Administrator</span>
+                        <span class="name" id="sidebar-user-name">Admin User</span>
+                        <span class="role" id="sidebar-user-role">System Administrator</span>
                     </div>
                 </div>
+                <button type="button" class="btn-sidebar-logout" id="btn-sidebar-logout" title="Keluar / Logout" style="background: rgba(239, 68, 68, 0.12); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;">
+                    <i class="ph ph-sign-out" style="font-size: 1.1rem;"></i>
+                </button>
             </div>
         </aside>
 
@@ -158,6 +161,11 @@
                         </button>
                         <span class="server-ping-badge" id="topbar-db-ping" title="Latency Koneksi Database">...</span>
                     </div>
+
+                    <!-- Session Status Pill in Topbar -->
+                    <span class="badge badge-secondary" id="topbar-session-pill" style="font-size: 0.75rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.65rem;" title="Sesi login aktif. Klik untuk memperbarui sesi">
+                        <i class="ph ph-shield-check" style="color: #10b981;"></i> <span id="topbar-session-text">Sesi: 60m</span>
+                    </span>
 
                     <div class="date-picker-group">
                         <div class="date-picker-box" title="Pilih Tanggal">
@@ -1362,6 +1370,103 @@
         </main>
     </div>
 
-    <script src="app.js?v=53"></script>
+    <!-- Glassmorphism Login Modal / Overlay -->
+    <div id="login-overlay" class="login-overlay-backdrop" style="display: none;">
+        <div class="login-card-container">
+            <!-- Ambient Glow Background Blobs -->
+            <div class="login-glow-blob blob-1"></div>
+            <div class="login-glow-blob blob-2"></div>
+            
+            <div class="login-glass-card">
+                <div class="login-card-header">
+                    <div class="login-brand-icon">
+                        <i class="ph ph-shield-check"></i>
+                    </div>
+                    <h2 class="login-title">Sistem Closing</h2>
+                    <span class="login-badge-prod">PERUMDAM Tirta Gemilang</span>
+                    <p class="login-subtitle">
+                        Autentikasi diperlukan untuk mengakses panel operasional transaksi & closing database.
+                    </p>
+                </div>
+
+                <!-- Auth Mode Switcher (Password vs PIN) -->
+                <div class="login-auth-tabs">
+                    <button type="button" class="login-tab-btn active" id="tab-login-password" data-type="password">
+                        <i class="ph ph-key"></i> Akun Operator
+                    </button>
+                    <button type="button" class="login-tab-btn" id="tab-login-pin" data-type="pin">
+                        <i class="ph ph-lock-key"></i> PIN Cepat
+                    </button>
+                </div>
+
+                <!-- Alert Error Message -->
+                <div class="login-alert-box" id="login-alert" style="display: none;">
+                    <i class="ph ph-warning-circle"></i>
+                    <span id="login-alert-text">Kredensial tidak valid.</span>
+                </div>
+
+                <form id="form-login-auth" autocomplete="off">
+                    <!-- Section: Password Login -->
+                    <div id="section-login-password">
+                        <div class="form-group" style="margin-bottom: 1.15rem;">
+                            <label class="login-input-label" for="login-username">
+                                <i class="ph ph-user"></i> Username / Operator ID
+                            </label>
+                            <div class="login-input-wrap">
+                                <input type="text" id="login-username" class="login-input-field" placeholder="Masukkan username" value="admin" required autocomplete="username">
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 1.15rem;">
+                            <label class="login-input-label" for="login-password">
+                                <i class="ph ph-lock"></i> Password
+                            </label>
+                            <div class="login-input-wrap">
+                                <input type="password" id="login-password" class="login-input-field" placeholder="Masukkan password" required autocomplete="current-password">
+                                <button type="button" class="btn-toggle-pwd" id="btn-toggle-login-pwd" title="Tampilkan/Sembunyikan Password">
+                                    <i class="ph ph-eye" id="icon-toggle-pwd"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section: PIN Login -->
+                    <div id="section-login-pin" style="display: none;">
+                        <div class="form-group" style="margin-bottom: 1.25rem;">
+                            <label class="login-input-label" for="login-pin">
+                                <i class="ph ph-hash"></i> PIN Operator (6 Digit)
+                            </label>
+                            <div class="login-input-wrap">
+                                <input type="password" id="login-pin" class="login-input-field pin-field" placeholder="• • • • • •" maxlength="6" inputmode="numeric">
+                            </div>
+                            <small class="login-help-text">Masukkan PIN master operator untuk verifikasi instan.</small>
+                        </div>
+                    </div>
+
+                    <!-- Remember Me & Security Meta -->
+                    <div class="login-meta-row">
+                        <label class="login-checkbox-label">
+                            <input type="checkbox" id="login-remember-me" checked>
+                            <span>Ingat sesi di perangkat ini</span>
+                        </label>
+                        <span class="session-timeout-hint"><i class="ph ph-clock"></i> Timeout 60m</span>
+                    </div>
+
+                    <button type="submit" class="btn-login-submit" id="btn-login-submit">
+                        <span id="btn-login-text"><i class="ph ph-sign-in"></i> Masuk ke Sistem</span>
+                        <div class="login-submit-loader" id="login-submit-loader" style="display: none;">
+                            <i class="ph ph-spinner spinner"></i> Memverifikasi...
+                        </div>
+                    </button>
+                </form>
+
+                <div class="login-card-footer">
+                    <i class="ph ph-shield-check"></i> Dilindungi enkripsi server & sesi aman PERUMDAM Tirta Gemilang
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=54"></script>
 </body>
 </html>

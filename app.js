@@ -3145,4 +3145,229 @@ if (!serverMetricsPoller) {
     serverMetricsPoller = setInterval(loadServerMetrics, 15000);
 }
 
+// ====================================================================
+// AUTHENTICATION & SESSION MANAGEMENT MODULE
+// ====================================================================
+const loginOverlay = document.getElementById('login-overlay');
+const formLoginAuth = document.getElementById('form-login-auth');
+const tabLoginPassword = document.getElementById('tab-login-password');
+const tabLoginPin = document.getElementById('tab-login-pin');
+const sectionLoginPassword = document.getElementById('section-login-password');
+const sectionLoginPin = document.getElementById('section-login-pin');
+const inputLoginUsername = document.getElementById('login-username');
+const inputLoginPassword = document.getElementById('login-password');
+const inputLoginPin = document.getElementById('login-pin');
+const inputLoginRemember = document.getElementById('login-remember-me');
+const btnToggleLoginPwd = document.getElementById('btn-toggle-login-pwd');
+const iconTogglePwd = document.getElementById('icon-toggle-pwd');
+const loginAlert = document.getElementById('login-alert');
+const loginAlertText = document.getElementById('login-alert-text');
+const btnLoginSubmit = document.getElementById('btn-login-submit');
+const btnLoginText = document.getElementById('btn-login-text');
+const loginSubmitLoader = document.getElementById('login-submit-loader');
+
+const sidebarUserName = document.getElementById('sidebar-user-name');
+const sidebarUserRole = document.getElementById('sidebar-user-role');
+const sidebarUserAvatar = document.getElementById('sidebar-user-avatar');
+const btnSidebarLogout = document.getElementById('btn-sidebar-logout');
+const topbarSessionPill = document.getElementById('topbar-session-pill');
+const topbarSessionText = document.getElementById('topbar-session-text');
+
+let currentAuthType = 'password';
+let sessionInterval = null;
+let remainingSessionSeconds = 3600;
+
+function showLoginOverlay(message = null) {
+    if (loginOverlay) {
+        loginOverlay.style.display = 'flex';
+    }
+    if (message && loginAlert && loginAlertText) {
+        loginAlert.style.display = 'flex';
+        loginAlertText.textContent = message;
+    }
+    if (currentAuthType === 'password') {
+        if (inputLoginPassword) inputLoginPassword.focus();
+    } else {
+        if (inputLoginPin) inputLoginPin.focus();
+    }
+}
+
+function hideLoginOverlay() {
+    if (loginOverlay) {
+        loginOverlay.style.display = 'none';
+    }
+    if (loginAlert) {
+        loginAlert.style.display = 'none';
+    }
+}
+
+function updateSessionUI(user, remainingSeconds = 3600) {
+    if (user) {
+        if (sidebarUserName) sidebarUserName.textContent = user.username || 'Admin';
+        if (sidebarUserRole) sidebarUserRole.textContent = user.role || 'Operator';
+        if (sidebarUserAvatar) {
+            const firstChar = (user.username || 'A').charAt(0).toUpperCase();
+            sidebarUserAvatar.textContent = firstChar;
+        }
+    }
+    remainingSessionSeconds = remainingSeconds;
+    startSessionTimer();
+}
+
+function startSessionTimer() {
+    if (sessionInterval) clearInterval(sessionInterval);
+    sessionInterval = setInterval(() => {
+        remainingSessionSeconds = Math.max(0, remainingSessionSeconds - 1);
+        const mins = Math.floor(remainingSessionSeconds / 60);
+        const secs = remainingSessionSeconds % 60;
+        
+        if (topbarSessionText) {
+            if (mins > 0) {
+                topbarSessionText.textContent = `Sesi: ${mins}m`;
+            } else {
+                topbarSessionText.textContent = `Sesi: ${secs}s`;
+            }
+        }
+
+        if (remainingSessionSeconds <= 0) {
+            clearInterval(sessionInterval);
+            sessionInterval = null;
+            showLoginOverlay('Sesi Anda telah berakhir. Silakan login kembali untuk melanjutkan.');
+        }
+    }, 1000);
+}
+
+async function checkAuthSession() {
+    try {
+        const res = await fetch('api.php?action=check_session');
+        const json = await res.json();
+        if (json.status === 'success' && json.authenticated) {
+            hideLoginOverlay();
+            updateSessionUI(json.user, json.remaining_seconds || 3600);
+        } else {
+            showLoginOverlay();
+        }
+    } catch (e) {
+        console.error('Error checking session:', e);
+        showLoginOverlay();
+    }
+}
+
+if (tabLoginPassword && tabLoginPin) {
+    tabLoginPassword.addEventListener('click', () => {
+        currentAuthType = 'password';
+        tabLoginPassword.classList.add('active');
+        tabLoginPin.classList.remove('active');
+        if (sectionLoginPassword) sectionLoginPassword.style.display = 'block';
+        if (sectionLoginPin) sectionLoginPin.style.display = 'none';
+        if (inputLoginPassword) inputLoginPassword.focus();
+    });
+
+    tabLoginPin.addEventListener('click', () => {
+        currentAuthType = 'pin';
+        tabLoginPin.classList.add('active');
+        tabLoginPassword.classList.remove('active');
+        if (sectionLoginPassword) sectionLoginPassword.style.display = 'none';
+        if (sectionLoginPin) sectionLoginPin.style.display = 'block';
+        if (inputLoginPin) inputLoginPin.focus();
+    });
+}
+
+if (btnToggleLoginPwd && inputLoginPassword && iconTogglePwd) {
+    btnToggleLoginPwd.addEventListener('click', () => {
+        if (inputLoginPassword.type === 'password') {
+            inputLoginPassword.type = 'text';
+            iconTogglePwd.className = 'ph ph-eye-slash';
+        } else {
+            inputLoginPassword.type = 'password';
+            iconTogglePwd.className = 'ph ph-eye';
+        }
+    });
+}
+
+if (formLoginAuth) {
+    formLoginAuth.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (loginAlert) loginAlert.style.display = 'none';
+
+        const payload = {
+            login_type: currentAuthType,
+            username: inputLoginUsername ? inputLoginUsername.value.trim() : '',
+            password: inputLoginPassword ? inputLoginPassword.value : '',
+            pin: inputLoginPin ? inputLoginPin.value.trim() : '',
+            remember_me: inputLoginRemember ? inputLoginRemember.checked : false
+        };
+
+        if (currentAuthType === 'pin' && (!payload.pin || payload.pin.length < 4)) {
+            if (loginAlert && loginAlertText) {
+                loginAlert.style.display = 'flex';
+                loginAlertText.textContent = 'Silakan masukkan PIN operator dengan benar.';
+            }
+            return;
+        }
+
+        if (btnLoginSubmit) btnLoginSubmit.disabled = true;
+        if (btnLoginText) btnLoginText.style.display = 'none';
+        if (loginSubmitLoader) loginSubmitLoader.style.display = 'inline-flex';
+
+        try {
+            const res = await fetch('api.php?action=login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const json = await res.json();
+
+            if (json.status === 'success') {
+                hideLoginOverlay();
+                updateSessionUI(json.user, json.session_timeout_seconds || 3600);
+                showNotification('Sukses', json.message || 'Login berhasil!', 'success');
+                // Reload dashboard data
+                loadData();
+                loadAutomationConfig();
+                loadPipelineLogs();
+                loadServerMetrics();
+            } else {
+                if (loginAlert && loginAlertText) {
+                    loginAlert.style.display = 'flex';
+                    loginAlertText.textContent = json.message || 'Kredensial atau PIN salah.';
+                }
+            }
+        } catch (err) {
+            if (loginAlert && loginAlertText) {
+                loginAlert.style.display = 'flex';
+                loginAlertText.textContent = 'Kesalahan jaringan: ' + err.message;
+            }
+        } finally {
+            if (btnLoginSubmit) btnLoginSubmit.disabled = false;
+            if (btnLoginText) btnLoginText.style.display = 'inline-flex';
+            if (loginSubmitLoader) loginSubmitLoader.style.display = 'none';
+        }
+    });
+}
+
+if (btnSidebarLogout) {
+    btnSidebarLogout.addEventListener('click', async () => {
+        if (!confirm('Apakah Anda yakin ingin logout dari Sistem Closing?')) {
+            return;
+        }
+        try {
+            await fetch('api.php?action=logout');
+        } catch (e) {}
+        if (sessionInterval) clearInterval(sessionInterval);
+        showNotification('Logout', 'Anda telah berhasil keluar dari sistem.', 'info');
+        showLoginOverlay('Silakan login kembali untuk mengakses sistem.');
+    });
+}
+
+if (topbarSessionPill) {
+    topbarSessionPill.addEventListener('click', () => {
+        checkAuthSession();
+        showNotification('Sesi Diperbarui', 'Sesi operasional aktif telah diperbarui.', 'info');
+    });
+}
+
+// Inisialisasi Cek Autentikasi Sesi
+checkAuthSession();
+
 
