@@ -1178,22 +1178,60 @@ function executeClosingRekeningPipeline($params = []) {
         }
 
         // -------------------------------------------------------------
-        // TAHAP 4: PELUNASAN RUMAH IBADAH (KUERI MENYUSUL)
+        // TAHAP 4: PELUNASAN RUMAH IBADAH
         // -------------------------------------------------------------
         $step4Name = "Tahap 4: Pelunasan Rekening Rumah Ibadah";
         $log("\n>>> Menjalankan $step4Name...");
         $t4_start = date('Y-m-d H:i:s');
         recordPipelineStep($pdo, $batchId, $periodeBerjalan, 4, $step4Name, 'RUNNING', $t4_start);
 
-        // Placeholder kueri pelunasan rumah ibadah - siap diinjeksi
-        $log("ℹ Menjalankan pemrosesan pelunasan khusus golongan rumah ibadah...");
-        usleep(300000);
+        try {
+            $sqlRumahIbadah = "
+                UPDATE `pdam`.`ppob`
+                SET `FLAG` = 9
+                WHERE `REK` = 1
+                  AND (
+                      (
+                          `GOL` IN (
+                              'Gereja,Langgar,Pura,Kelenteng (IB3)',
+                              'Masjid Jamik (IB1)',
+                              'Masjid kecil (IB2)'
+                          )
+                          AND (
+                              `IDLGN` LIKE '1%' 
+                              OR `IDLGN` LIKE '2%' 
+                              OR `IDLGN` LIKE '3%'
+                          )
+                      )
+                      OR `IDLGN` = '12010151'
+                  )
+            ";
+            $stmtRumahIbadah = $pdo->prepare($sqlRumahIbadah);
+            $stmtRumahIbadah->execute();
+            $jmlRumahIbadah = $stmtRumahIbadah->rowCount();
+            $log("   - Update FLAG = 9 pada `pdam`.`ppob`: $jmlRumahIbadah rekening rumah ibadah dilunaskan.");
 
-        $t4_end = date('Y-m-d H:i:s');
-        $pesanStep4 = "Pelunasan rekening golongan rumah ibadah berhasil diproses.";
-        $log("✓ $step4Name berhasil. $pesanStep4");
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 4, $step4Name, 'SUCCESS', $t4_start, $t4_end, $pesanStep4);
-        $pipelineResult['steps'][4] = ['name' => $step4Name, 'status' => 'SUCCESS', 'pesan' => $pesanStep4];
+            $t4_end = date('Y-m-d H:i:s');
+            $pesanStep4 = "Pelunasan rekening rumah ibadah berhasil. $jmlRumahIbadah rekening diset FLAG = 9 (Lunas).";
+            $log("✓ $step4Name berhasil. $pesanStep4");
+
+            $ibadahSummary = [
+                'jumlah_rekening_dilunaskan' => $jmlRumahIbadah,
+                'kriteria' => 'REK=1, GOL IB1/IB2/IB3 (IDLGN 1,2,3) + IDLGN 12010151',
+                'flag_result' => 9
+            ];
+
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 4, $step4Name, 'SUCCESS', $t4_start, $t4_end, $pesanStep4, $ibadahSummary);
+            $pipelineResult['steps'][4] = [
+                'name' => $step4Name,
+                'status' => 'SUCCESS',
+                'pesan' => $pesanStep4,
+                'data' => $ibadahSummary
+            ];
+
+        } catch (Exception $e) {
+            throw new Exception("Gagal pada $step4Name: " . $e->getMessage());
+        }
 
         // -------------------------------------------------------------
         // TAHAP 5: SET INFO OFFLINE = '1' (MODE ONLINE KEMBALI)
