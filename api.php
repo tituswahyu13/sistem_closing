@@ -42,7 +42,7 @@ $port = !empty($env['PORT']) ? $env['PORT'] : '3306';
 
 // Auth credentials from .env
 $authUsername = !empty($env['AUTH_USERNAME']) ? $env['AUTH_USERNAME'] : 'admin';
-$authPassword = !empty($env['AUTH_PASSWORD']) ? $env['AUTH_PASSWORD'] : 'adminclosing2026';
+$authPassword = !empty($env['AUTH_PASSWORD']) ? $env['AUTH_PASSWORD'] : 'pdamjaya3x';
 $authPin      = !empty($env['AUTH_PIN']) ? $env['AUTH_PIN'] : '199407';
 $sessionTimeoutMinutes = !empty($env['SESSION_TIMEOUT_MINUTES']) ? intval($env['SESSION_TIMEOUT_MINUTES']) : 60;
 
