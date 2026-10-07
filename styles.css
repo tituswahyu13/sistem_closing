@@ -2769,14 +2769,26 @@ tr.row-outside-kuota:hover {
 .closing-rekening-section,
 .backup-section,
 .audit-section {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1.5rem !important;
     width: 100%;
     animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.audit-section > * + *,
+.pipeline-section > * + *,
+.closing-rekening-section > * + *,
+.backup-section > * + * {
+    margin-top: 1.5rem;
+}
+
 .audit-subpanel {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    width: 100%;
+    margin-top: 1.5rem;
     animation: fadeIn 0.25s ease-out;
 }
 

@@ -672,10 +672,10 @@ function switchTab(tabId) {
     const auditSec = document.getElementById('audit-section');
     
     // Reset all major section visibility
-    if (pipelineSec) pipelineSec.style.display = (tabId === 'pipeline' || tabId === 'otomasi') ? 'block' : 'none';
-    if (backupSec) backupSec.style.display = (tabId === 'backup') ? 'block' : 'none';
-    if (closingRekeningSec) closingRekeningSec.style.display = (tabId === 'closing_rekening') ? 'block' : 'none';
-    if (auditSec) auditSec.style.display = (tabId === 'audit') ? 'block' : 'none';
+    if (pipelineSec) pipelineSec.style.display = (tabId === 'pipeline' || tabId === 'otomasi') ? 'flex' : 'none';
+    if (backupSec) backupSec.style.display = (tabId === 'backup') ? 'flex' : 'none';
+    if (closingRekeningSec) closingRekeningSec.style.display = (tabId === 'closing_rekening') ? 'flex' : 'none';
+    if (auditSec) auditSec.style.display = (tabId === 'audit') ? 'flex' : 'none';
     
     const isTableTab = (tabId === 'beli' || tabId === 'batal' || tabId === 'dibeli');
     if (tableContainer) tableContainer.style.display = isTableTab ? 'block' : 'none';
@@ -3913,9 +3913,9 @@ function switchAuditSubtab(subtabId) {
     const panelTagihan = document.getElementById('audit-subpanel-tagihan');
     const panelAngsuran = document.getElementById('audit-subpanel-angsuran');
 
-    if (panelUncontrolled) panelUncontrolled.style.display = (subtabId === 'uncontrolled') ? 'block' : 'none';
-    if (panelTagihan) panelTagihan.style.display = (subtabId === 'tagihan') ? 'block' : 'none';
-    if (panelAngsuran) panelAngsuran.style.display = (subtabId === 'angsuran') ? 'block' : 'none';
+    if (panelUncontrolled) panelUncontrolled.style.display = (subtabId === 'uncontrolled') ? 'flex' : 'none';
+    if (panelTagihan) panelTagihan.style.display = (subtabId === 'tagihan') ? 'flex' : 'none';
+    if (panelAngsuran) panelAngsuran.style.display = (subtabId === 'angsuran') ? 'flex' : 'none';
 }
 
 // Load Audit Summary
