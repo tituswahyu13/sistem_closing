@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=54">
+    <link rel="stylesheet" href="styles.css?v=55">
 </head>
 <body>
     <div class="app-container">
@@ -51,6 +51,10 @@
                 <button class="nav-item" data-tab="closing_rekening">
                     <i class="ph ph-receipt"></i>
                     <span>Closing Rekening</span>
+                </button>
+                <button class="nav-item" data-tab="audit">
+                    <i class="ph ph-shield-check"></i>
+                    <span>Audit Pra-Closing</span>
                 </button>
                 <button class="nav-item" data-tab="backup">
                     <i class="ph ph-hard-drives"></i>
@@ -1282,6 +1286,388 @@
                 </div>
             </div>
 
+            <!-- Audit Pra-Closing Section -->
+            <div class="audit-section" id="audit-section" style="display: none;">
+                <!-- Header Banner Card -->
+                <div class="glass-panel schedule-banner" style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95)); border-left: 4px solid #10b981; margin-bottom: 1.5rem;">
+                    <div class="schedule-banner-content">
+                        <div class="schedule-icon-box" id="audit-banner-icon" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">
+                            <i class="ph ph-shield-check"></i>
+                        </div>
+                        <div class="schedule-text-box">
+                            <div class="schedule-title-row" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+                                <div>
+                                    <h3 style="margin: 0; font-size: 1.15rem; color: #fff;">Audit & Validasi Pra-Closing Database</h3>
+                                    <p style="margin: 4px 0 0 0; font-size: 0.82rem; color: var(--text-secondary);">
+                                        Validasi integritas data: Cek rekening belum dikontrol (Tutup Rekening), duplikat tagrek/tunggak (Tutup Tagihan), dan duplikat angsuran.
+                                    </p>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span class="badge badge-success" id="audit-overall-status-badge" style="font-size: 0.8rem; padding: 0.4rem 0.8rem;">
+                                        <i class="ph ph-shield-check"></i> Memuat Status...
+                                    </span>
+                                    <button type="button" class="btn btn-sm btn-secondary" id="btn-refresh-audit" style="font-size: 0.78rem; padding: 0.4rem 0.8rem; border-color: rgba(255,255,255,0.15);">
+                                        <i class="ph ph-arrows-clockwise"></i> Audit Ulang
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4 KPI Summary Cards -->
+                <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                    <!-- KPI 1: Rekening Belum Kontrol -->
+                    <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-uncontrolled">
+                        <div class="stat-icon-wrapper warning" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">
+                            <i class="ph ph-gauge"></i>
+                        </div>
+                        <div class="stat-content">
+                            <span class="stat-label">Rekening Belum Kontrol</span>
+                            <h3 class="stat-value" id="audit-stat-uncontrolled" style="color: #fbbf24;">0</h3>
+                            <span class="stat-sub" id="audit-sub-uncontrolled">Target: spd_rekening (IS_CTRL=0)</span>
+                        </div>
+                    </div>
+
+                    <!-- KPI 2: Duplikat Tagrek -->
+                    <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-tagrek">
+                        <div class="stat-icon-wrapper purple" style="background: rgba(139, 92, 246, 0.15); color: #c084fc;">
+                            <i class="ph ph-files"></i>
+                        </div>
+                        <div class="stat-content">
+                            <span class="stat-label">Duplikat Tagrek (Tagihan)</span>
+                            <h3 class="stat-value" id="audit-stat-tagrek-dup" style="color: #c084fc;">0</h3>
+                            <span class="stat-sub" id="audit-sub-tagrek">Target: spd_tagrek</span>
+                        </div>
+                    </div>
+
+                    <!-- KPI 3: Duplikat Tunggak & Silang -->
+                    <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-tunggak">
+                        <div class="stat-icon-wrapper danger" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">
+                            <i class="ph ph-warning-octagon"></i>
+                        </div>
+                        <div class="stat-content">
+                            <span class="stat-label">Tunggak & Silang Duplikat</span>
+                            <h3 class="stat-value" id="audit-stat-tunggak-dup" style="color: #f87171;">0</h3>
+                            <span class="stat-sub" id="audit-sub-tunggak">Target: spd_tunggak & Silang</span>
+                        </div>
+                    </div>
+
+                    <!-- KPI 4: Duplikat Angsuran -->
+                    <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-angsuran">
+                        <div class="stat-icon-wrapper info" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">
+                            <i class="ph ph-money"></i>
+                        </div>
+                        <div class="stat-content">
+                            <span class="stat-label">Duplikat Angsuran</span>
+                            <h3 class="stat-value" id="audit-stat-angsuran-dup" style="color: #38bdf8;">0</h3>
+                            <span class="stat-sub" id="audit-sub-angsuran">Target: spd_angsuran & rekang</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sub-tab Navigation Pills -->
+                <div class="login-auth-tabs" style="max-width: 100%; margin-bottom: 1.5rem; background: rgba(15, 23, 42, 0.6); padding: 0.4rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+                    <button type="button" class="login-tab-btn active" id="subtab-btn-uncontrolled" data-audit-tab="uncontrolled" style="flex: 1; font-size: 0.85rem; padding: 0.6rem 1rem;">
+                        <i class="ph ph-gauge"></i> 1. Rekening Belum Dikontrol
+                        <span class="badge badge-warning" id="subtab-badge-uncontrolled" style="margin-left: 0.5rem; font-size: 0.72rem; padding: 2px 7px;">0</span>
+                    </button>
+                    <button type="button" class="login-tab-btn" id="subtab-btn-tagihan" data-audit-tab="tagihan" style="flex: 1; font-size: 0.85rem; padding: 0.6rem 1rem;">
+                        <i class="ph ph-receipt"></i> 2. Cek Duplikat Tutup Tagihan
+                        <span class="badge badge-secondary" id="subtab-badge-tagihan" style="margin-left: 0.5rem; font-size: 0.72rem; padding: 2px 7px;">0</span>
+                    </button>
+                    <button type="button" class="login-tab-btn" id="subtab-btn-angsuran" data-audit-tab="angsuran" style="flex: 1; font-size: 0.85rem; padding: 0.6rem 1rem;">
+                        <i class="ph ph-money"></i> 3. Cek Duplikat Tutup Rekening
+                        <span class="badge badge-secondary" id="subtab-badge-angsuran" style="margin-left: 0.5rem; font-size: 0.72rem; padding: 2px 7px;">0</span>
+                    </button>
+                </div>
+
+                <!-- Sub-Panel 1: Rekening Belum Dikontrol (Cek Tutup Rekening) -->
+                <div class="audit-subpanel" id="audit-subpanel-uncontrolled">
+                    <div class="glass-panel" style="padding: 1.5rem;">
+                        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 1rem; margin-bottom: 1.25rem;">
+                            <div>
+                                <h2 style="font-size: 1.15rem; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
+                                    <i class="ph ph-gauge" style="color: #fbbf24;"></i> Daftar Rekening Belum Terkontrol (IS_CTRL = 0)
+                                </h2>
+                                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+                                    Rekening air pada periode aktif yang belum dilakukan kontrol meter oleh petugas pembaca/billing.
+                                </p>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                <button type="button" class="btn btn-sm btn-secondary" id="btn-export-uncontrolled-csv" style="font-size: 0.78rem;">
+                                    <i class="ph ph-download-simple"></i> Unduh CSV
+                                </button>
+                                <button type="button" class="btn btn-sm btn-primary" id="btn-reload-uncontrolled" style="font-size: 0.78rem;">
+                                    <i class="ph ph-arrows-clockwise"></i> Muat Ulang
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Filter Controls Bar -->
+                        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.25rem; background: rgba(0,0,0,0.25); padding: 0.85rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                            <div style="flex: 2; min-width: 200px;">
+                                <input type="text" id="filter-uncontrolled-search" placeholder="Cari No PDAM / Nama / Alamat..." style="width: 100%; padding: 0.5rem 0.85rem; font-size: 0.85rem; border-radius: 6px; background: rgba(15,23,42,0.8); border: 1px solid rgba(255,255,255,0.12); color: #fff;">
+                            </div>
+                            <div style="flex: 1; min-width: 150px;">
+                                <select id="filter-uncontrolled-lokbay" style="width: 100%; padding: 0.5rem 0.75rem; font-size: 0.85rem; border-radius: 6px; background: rgba(15,23,42,0.8); border: 1px solid rgba(255,255,255,0.12); color: #fff;">
+                                    <option value="">Semua Lokasi Bayar</option>
+                                </select>
+                            </div>
+                            <div style="flex: 1; min-width: 150px;">
+                                <select id="filter-uncontrolled-stgol" style="width: 100%; padding: 0.5rem 0.75rem; font-size: 0.85rem; border-radius: 6px; background: rgba(15,23,42,0.8); border: 1px solid rgba(255,255,255,0.12); color: #fff;">
+                                    <option value="">Semua Golongan</option>
+                                </select>
+                            </div>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-apply-uncontrolled-filter">
+                                <i class="ph ph-funnel"></i> Saring
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-reset-uncontrolled-filter" title="Reset Filter">
+                                <i class="ph ph-x"></i>
+                            </button>
+                        </div>
+
+                        <!-- Data Table -->
+                        <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                            <table class="data-table" style="font-size: 0.82rem; width: 100%;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 100px;">NO PDAM</th>
+                                        <th>NAMA PELANGGAN</th>
+                                        <th>ALAMAT</th>
+                                        <th style="width: 70px;">GOL</th>
+                                        <th style="width: 80px;">LOKBAY</th>
+                                        <th style="text-align: right; width: 80px;">MTR LALU</th>
+                                        <th style="text-align: right; width: 80px;">MTR KINI</th>
+                                        <th style="text-align: right; width: 80px;">PAKAI M³</th>
+                                        <th style="text-align: right; width: 110px;">EST. TAGIHAN</th>
+                                        <th style="text-align: center; width: 90px;">STATUS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-uncontrolled-rekening">
+                                    <tr>
+                                        <td colspan="10" style="text-align: center; color: var(--text-secondary); padding: 2rem;">
+                                            Memuat data rekening belum kontrol...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Pagination Bar -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.06); font-size: 0.8rem; color: var(--text-secondary);">
+                            <span id="uncontrolled-page-info">Menampilkan 0 dari 0 data</span>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <button type="button" class="icon-btn" id="btn-uncontrolled-prev" disabled><i class="ph ph-caret-left"></i></button>
+                                <span id="uncontrolled-current-page" style="font-weight: 600; color: #fff;">1</span>
+                                <button type="button" class="icon-btn" id="btn-uncontrolled-next" disabled><i class="ph ph-caret-right"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sub-Panel 2: Duplikat Tagrek & Tunggak (Cek Tutup Tagihan) -->
+                <div class="audit-subpanel" id="audit-subpanel-tagihan" style="display: none;">
+                    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                        
+                        <!-- 2.1 Duplikat spd_tagrek -->
+                        <div class="glass-panel" style="padding: 1.5rem;">
+                            <div class="panel-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.75rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h2 style="font-size: 1.05rem; color: #c084fc; display: flex; align-items: center; gap: 0.5rem;">
+                                        <i class="ph ph-files"></i> 2.1 Duplikasi di Tabel Rekening Berjalan (spd_tagrek)
+                                    </h2>
+                                    <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                                        Pelanggan yang memiliki lebih dari satu baris tagihan pada periode tagihan aktif berjalan.
+                                    </p>
+                                </div>
+                                <span class="badge badge-secondary" id="badge-count-tagrek-dup">0 Duplikat</span>
+                            </div>
+                            <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                                <table class="data-table" style="font-size: 0.8rem;">
+                                    <thead>
+                                        <tr>
+                                            <th>NO PDAM</th>
+                                            <th>NAMA</th>
+                                            <th>ALAMAT</th>
+                                            <th>PERIODE</th>
+                                            <th style="text-align: center;">JML REKENING</th>
+                                            <th style="text-align: right;">TOTAL TAGIHAN</th>
+                                            <th>ID RECORD</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-tagrek-duplicates">
+                                        <tr>
+                                            <td colspan="7" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ditemukan duplikasi di spd_tagrek (Bersih).
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- 2.2 Duplikat spd_tunggak -->
+                        <div class="glass-panel" style="padding: 1.5rem;">
+                            <div class="panel-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.75rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h2 style="font-size: 1.05rem; color: #f87171; display: flex; align-items: center; gap: 0.5rem;">
+                                        <i class="ph ph-warning-circle"></i> 2.2 Duplikasi di Tabel Tunggakan (spd_tunggak)
+                                    </h2>
+                                    <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                                        Pelanggan yang memiliki baris tunggakan ganda pada bulan rekening yang sama (belum lunas).
+                                    </p>
+                                </div>
+                                <span class="badge badge-secondary" id="badge-count-tunggak-dup">0 Duplikat</span>
+                            </div>
+                            <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                                <table class="data-table" style="font-size: 0.8rem;">
+                                    <thead>
+                                        <tr>
+                                            <th>NO PDAM</th>
+                                            <th>NAMA</th>
+                                            <th>ALAMAT</th>
+                                            <th>BULAN REKENING</th>
+                                            <th style="text-align: center;">JML TUNGGAKAN</th>
+                                            <th style="text-align: right;">TOTAL NOMINAL</th>
+                                            <th>ID RECORD</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-tunggak-duplicates">
+                                        <tr>
+                                            <td colspan="7" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ditemukan duplikasi di spd_tunggak (Bersih).
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- 2.3 Konflik Silang Tagrek vs Tunggak -->
+                        <div class="glass-panel" style="padding: 1.5rem;">
+                            <div class="panel-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.75rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h2 style="font-size: 1.05rem; color: #fbbf24; display: flex; align-items: center; gap: 0.5rem;">
+                                        <i class="ph ph-arrows-merge"></i> 2.3 Konflik Silang: spd_tagrek VS spd_tunggak
+                                    </h2>
+                                    <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                                        Rekening yang tercatat sekaligus di <code>spd_tagrek</code> dan <code>spd_tunggak</code> pada periode yang sama (berpotensi tagihan ganda).
+                                    </p>
+                                </div>
+                                <span class="badge badge-secondary" id="badge-count-silang-dup">0 Konflik</span>
+                            </div>
+                            <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                                <table class="data-table" style="font-size: 0.8rem;">
+                                    <thead>
+                                        <tr>
+                                            <th>NO PDAM</th>
+                                            <th>NAMA</th>
+                                            <th>PERIODE</th>
+                                            <th style="text-align: right;">TAGIHAN TAGREK</th>
+                                            <th style="text-align: right;">TAGIHAN TUNGGAK</th>
+                                            <th>ID TAGREK</th>
+                                            <th>ID TUNGGAK</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-silang-duplicates">
+                                        <tr>
+                                            <td colspan="7" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ada konflik silang antara spd_tagrek dan spd_tunggak (Bersih).
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Sub-Panel 3: Duplikat Angsuran (Cek Tutup Rekening) -->
+                <div class="audit-subpanel" id="audit-subpanel-angsuran" style="display: none;">
+                    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+
+                        <!-- 3.1 Duplikat spd_angsuran -->
+                        <div class="glass-panel" style="padding: 1.5rem;">
+                            <div class="panel-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.75rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h2 style="font-size: 1.05rem; color: #38bdf8; display: flex; align-items: center; gap: 0.5rem;">
+                                        <i class="ph ph-money"></i> 3.1 Duplikasi Master Angsuran Aktif (spd_angsuran)
+                                    </h2>
+                                    <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                                        Master rencana angsuran pelanggan dengan kriteria dan periode yang sama (belum lunas / AKUMBAYAR &lt; VOLUME).
+                                    </p>
+                                </div>
+                                <span class="badge badge-secondary" id="badge-count-angsuran-dup">0 Duplikat</span>
+                            </div>
+                            <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                                <table class="data-table" style="font-size: 0.8rem;">
+                                    <thead>
+                                        <tr>
+                                            <th>NO PDAM</th>
+                                            <th>NAMA</th>
+                                            <th>KRITERIA</th>
+                                            <th>PERIODE</th>
+                                            <th style="text-align: center;">JML DUPLIKAT</th>
+                                            <th style="text-align: right;">TOTAL VOLUME</th>
+                                            <th style="text-align: right;">TOTAL AKUMBAYAR</th>
+                                            <th>ID RECORD</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-angsuran-duplicates">
+                                        <tr>
+                                            <td colspan="8" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ditemukan duplikasi di spd_angsuran (Bersih).
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- 3.2 Duplikat spd_rekang -->
+                        <div class="glass-panel" style="padding: 1.5rem;">
+                            <div class="panel-header" style="border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.75rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h2 style="font-size: 1.05rem; color: #a5b4fc; display: flex; align-items: center; gap: 0.5rem;">
+                                        <i class="ph ph-list-numbers"></i> 3.2 Duplikasi Rekening Angsuran (spd_rekang)
+                                    </h2>
+                                    <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                                        Catatan angsuran bulanan yang terinput ganda pada tanggal dan pelanggan yang sama dalam 6 bulan terakhir.
+                                    </p>
+                                </div>
+                                <span class="badge badge-secondary" id="badge-count-rekang-dup">0 Duplikat</span>
+                            </div>
+                            <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                                <table class="data-table" style="font-size: 0.8rem;">
+                                    <thead>
+                                        <tr>
+                                            <th>NO PDAM</th>
+                                            <th>NAMA</th>
+                                            <th>TANGGAL</th>
+                                            <th>KRITERIA</th>
+                                            <th style="text-align: center;">JML DUPLIKAT</th>
+                                            <th style="text-align: right;">TOTAL NOMINAL</th>
+                                            <th>ID RECORD</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-rekang-duplicates">
+                                        <tr>
+                                            <td colspan="7" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ditemukan duplikasi di spd_rekang (Bersih).
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
             <!-- Modal Konfirmasi Restore Database -->
             <div class="modal-overlay" id="modal-restore" style="display: none; position: fixed; inset: 0; background: rgba(5, 8, 16, 0.85); backdrop-filter: blur(8px); z-index: 1000; align-items: center; justify-content: center;">
                 <div class="glass-panel modal-card" style="width: 100%; max-width: 520px; padding: 1.75rem; border: 1px solid rgba(239, 68, 68, 0.3); box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
@@ -1678,6 +2064,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=54"></script>
+    <script src="app.js?v=55"></script>
 </body>
 </html>

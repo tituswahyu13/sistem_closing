@@ -1878,7 +1878,338 @@ if ($action === 'beli' || $action === 'batal') {
             "message" => $e->getMessage()
         ]);
     }
+} elseif ($action === 'get_audit_summary') {
+    try {
+        // Ambil periode aktif dari spd_periode
+        $stmtPer = $pdo->query("SELECT * FROM spd_periode WHERE IS_TUTUP = 0 LIMIT 1");
+        $perRow = $stmtPer->fetch();
+        $periodeRekening = $perRow ? sprintf("%04d%02d", $perRow['TAHUN'], $perRow['BULAN']) : date('Ym');
+
+        // Periode tagihan berjalan adalah -1 bulan dari periode aktif
+        $dtTagrek = new DateTime(substr($periodeRekening, 0, 4) . '-' . substr($periodeRekening, 4, 2) . '-01');
+        $dtTagrek->modify('-1 month');
+        $periodeTagihan = $dtTagrek->format('Ym');
+
+        // Override jika ada param periode
+        $reqPeriode = trim($_GET['periode'] ?? '');
+        if ($reqPeriode && strlen($reqPeriode) === 6) {
+            $periodeRekening = $reqPeriode;
+            $dtReq = new DateTime(substr($reqPeriode, 0, 4) . '-' . substr($reqPeriode, 4, 2) . '-01');
+            $dtReq->modify('-1 month');
+            $periodeTagihan = $dtReq->format('Ym');
+        }
+
+        // 1. Rekening Belum Kontrol
+        $stmtCtrl = $pdo->prepare("
+            SELECT COUNT(*) FROM spd_rekening 
+            WHERE PERIODE = :periode AND STATUS IN ('A','T') AND IS_CTRL = 0
+        ");
+        $stmtCtrl->execute(['periode' => $periodeRekening]);
+        $cntUncontrolled = (int)$stmtCtrl->fetchColumn();
+
+        // Total rekening aktif periode ini
+        $stmtTotalRek = $pdo->prepare("
+            SELECT COUNT(*) FROM spd_rekening 
+            WHERE PERIODE = :periode AND STATUS IN ('A','T')
+        ");
+        $stmtTotalRek->execute(['periode' => $periodeRekening]);
+        $cntTotalRekening = (int)$stmtTotalRek->fetchColumn();
+
+        // 2. Tagrek Duplikat
+        $stmtTagrekDup = $pdo->prepare("
+            SELECT COUNT(*) FROM (
+                SELECT a.NO_PDAM
+                FROM spd_tagrek a
+                WHERE a.REKENING_BULAN = :periode AND a.IS_DELETE = 0 AND a.IS_YKK = 0
+                GROUP BY a.NO_PDAM
+                HAVING COUNT(*) > 1
+            ) x
+        ");
+        $stmtTagrekDup->execute(['periode' => $periodeTagihan]);
+        $cntTagrekDup = (int)$stmtTagrekDup->fetchColumn();
+
+        // 3. Tunggak Duplikat
+        $stmtTunggakDup = $pdo->query("
+            SELECT COUNT(*) FROM (
+                SELECT a.NO_PDAM
+                FROM spd_tunggak a
+                WHERE a.LUNAS = 0 AND a.IS_DELETE = 0 AND a.PH IS NULL
+                GROUP BY a.NO_PDAM, DATE_FORMAT(a.REKENING_BULAN, '%Y%m')
+                HAVING COUNT(*) > 1
+            ) x
+        ");
+        $cntTunggakDup = (int)$stmtTunggakDup->fetchColumn();
+
+        // 4. Silang Tagrek vs Tunggak
+        $tglStart = substr($periodeTagihan, 0, 4) . '-' . substr($periodeTagihan, 4, 2) . '-01';
+        $tglEnd = substr($periodeTagihan, 0, 4) . '-' . substr($periodeTagihan, 4, 2) . '-31';
+        $stmtSilangDup = $pdo->prepare("
+            SELECT COUNT(*) FROM (
+                SELECT a.NO_PDAM
+                FROM spd_tagrek a
+                JOIN spd_tunggak t ON t.NO_PDAM = a.NO_PDAM 
+                    AND t.REKENING_BULAN BETWEEN :tgl_start AND :tgl_end
+                    AND t.LUNAS = 0 AND t.IS_DELETE = 0 AND t.PH IS NULL
+                WHERE a.REKENING_BULAN = :periode AND a.IS_DELETE = 0 AND a.IS_YKK = 0
+                GROUP BY a.NO_PDAM
+            ) x
+        ");
+        $stmtSilangDup->execute([
+            'tgl_start' => $tglStart,
+            'tgl_end' => $tglEnd,
+            'periode' => $periodeTagihan
+        ]);
+        $cntSilangDup = (int)$stmtSilangDup->fetchColumn();
+
+        // 5. Angsuran Duplikat
+        $stmtAngsurDup = $pdo->query("
+            SELECT COUNT(*) FROM (
+                SELECT a.STLGN_ID
+                FROM spd_angsuran a
+                WHERE a.AKUMBAYAR < a.VOLUME
+                GROUP BY a.STLGN_ID, a.KRITERIA, a.PERIODE
+                HAVING COUNT(*) > 1
+            ) x
+        ");
+        $cntAngsurDup = (int)$stmtAngsurDup->fetchColumn();
+
+        // Kesimpulan status
+        $readyClosingTagihan = ($cntTagrekDup === 0 && $cntTunggakDup === 0);
+        $readyClosingRekening = ($cntUncontrolled === 0 && $cntAngsurDup === 0);
+
+        echo json_encode([
+            "status" => "success",
+            "periode_rekening" => $periodeRekening,
+            "periode_tagihan" => $periodeTagihan,
+            "metrics" => [
+                "rekening_belum_kontrol" => $cntUncontrolled,
+                "rekening_total" => $cntTotalRekening,
+                "tagrek_duplikat" => $cntTagrekDup,
+                "tunggak_duplikat" => $cntTunggakDup,
+                "silang_duplikat" => $cntSilangDup,
+                "angsuran_duplikat" => $cntAngsurDup
+            ],
+            "kesiapan" => [
+                "closing_tagihan_ready" => $readyClosingTagihan,
+                "closing_rekening_ready" => $readyClosingRekening,
+                "status_keseluruhan" => ($readyClosingTagihan && $readyClosingRekening) ? "SIAP" : "PERLU_PERHATIAN"
+            ],
+            "server_time" => date('Y-m-d H:i:s')
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
+} elseif ($action === 'get_uncontrolled_rekening') {
+    try {
+        $reqPeriode = trim($_GET['periode'] ?? '');
+        if (!$reqPeriode) {
+            $stmtPer = $pdo->query("SELECT * FROM spd_periode WHERE IS_TUTUP = 0 LIMIT 1");
+            $perRow = $stmtPer->fetch();
+            $reqPeriode = $perRow ? sprintf("%04d%02d", $perRow['TAHUN'], $perRow['BULAN']) : date('Ym');
+        }
+
+        $page = max(1, intval($_GET['page'] ?? 1));
+        $limit = max(10, min(200, intval($_GET['limit'] ?? 50)));
+        $offset = ($page - 1) * $limit;
+
+        $search = trim($_GET['search'] ?? '');
+        $lokbay = trim($_GET['lokbay'] ?? '');
+        $stgol  = trim($_GET['stgol'] ?? '');
+
+        $where = ["a.PERIODE = :periode", "a.STATUS IN ('A','T')", "a.IS_CTRL = 0"];
+        $params = ['periode' => $reqPeriode];
+
+        if ($search !== '') {
+            $where[] = "(a.NO_PDAM LIKE :search OR b.NAMA LIKE :search OR b.ALAMAT LIKE :search)";
+            $params['search'] = "%{$search}%";
+        }
+        if ($lokbay !== '') {
+            $where[] = "a.LOKBAY_ID = :lokbay";
+            $params['lokbay'] = $lokbay;
+        }
+        if ($stgol !== '') {
+            $where[] = "a.STGOL_ID = :stgol";
+            $params['stgol'] = $stgol;
+        }
+
+        $whereClause = implode(' AND ', $where);
+
+        // Count total
+        $countSql = "
+            SELECT COUNT(*) 
+            FROM spd_rekening a
+            JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+            WHERE $whereClause
+        ";
+        $stmtCount = $pdo->prepare($countSql);
+        $stmtCount->execute($params);
+        $totalRecords = (int)$stmtCount->fetchColumn();
+
+        // Fetch rows
+        $dataSql = "
+            SELECT a.ID, a.NO_PDAM, b.NAMA, b.ALAMAT, a.STGOL_ID, a.LOKBAY_ID, 
+                   a.METERLALU, a.METER, a.EDITMETER, a.STATUS, a.IS_CTRL,
+                   (a.RK + a.NON_AIR + a.MATERAI) as ESTIMASI_TAGIHAN
+            FROM spd_rekening a
+            JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+            WHERE $whereClause
+            ORDER BY a.LOKBAY_ID ASC, a.NO_PDAM ASC
+            LIMIT :limit OFFSET :offset
+        ";
+        $stmtData = $pdo->prepare($dataSql);
+        foreach ($params as $k => $v) {
+            $stmtData->bindValue($k, $v);
+        }
+        $stmtData->bindValue('limit', $limit, PDO::PARAM_INT);
+        $stmtData->bindValue('offset', $offset, PDO::PARAM_INT);
+        $stmtData->execute();
+        $rows = $stmtData->fetchAll(PDO::FETCH_ASSOC);
+
+        // Get filter options
+        $lokbayOptions = $pdo->query("SELECT DISTINCT ID, NAMA FROM spd_lokbay ORDER BY ID")->fetchAll();
+        $stgolOptions = $pdo->query("SELECT DISTINCT ID, KETERANGAN FROM spd_stgol ORDER BY ID")->fetchAll();
+
+        echo json_encode([
+            "status" => "success",
+            "periode" => $reqPeriode,
+            "total" => $totalRecords,
+            "page" => $page,
+            "limit" => $limit,
+            "total_pages" => ceil($totalRecords / $limit),
+            "data" => $rows,
+            "filters" => [
+                "lokbay" => $lokbayOptions,
+                "stgol" => $stgolOptions
+            ]
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
+} elseif ($action === 'get_tagihan_duplicates') {
+    try {
+        $reqPeriode = trim($_GET['periode'] ?? '');
+        if (!$reqPeriode) {
+            $stmtPer = $pdo->query("SELECT * FROM spd_periode WHERE IS_TUTUP = 0 LIMIT 1");
+            $perRow = $stmtPer->fetch();
+            $dtTagrek = new DateTime(($perRow ? "{$perRow['TAHUN']}-{$perRow['BULAN']}-01" : date('Y-m-01')));
+            $dtTagrek->modify('-1 month');
+            $reqPeriode = $dtTagrek->format('Ym');
+        }
+
+        // 1. Tagrek Duplicates
+        $stmtTagrek = $pdo->prepare("
+            SELECT a.NO_PDAM, b.NAMA, b.ALAMAT, a.REKENING_BULAN, a.LOKBAY_ID, a.STGOL_ID,
+                   COUNT(*) as jml_kembar, SUM(a.JUMLAH) as tot_tagihan,
+                   GROUP_CONCAT(a.ID SEPARATOR ', ') as ids
+            FROM spd_tagrek a
+            JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+            WHERE a.REKENING_BULAN = :periode AND a.IS_DELETE = 0 AND a.IS_YKK = 0
+            GROUP BY a.NO_PDAM
+            HAVING COUNT(*) > 1
+            ORDER BY a.NO_PDAM ASC
+        ");
+        $stmtTagrek->execute(['periode' => $reqPeriode]);
+        $tagrekDuplicates = $stmtTagrek->fetchAll(PDO::FETCH_ASSOC);
+
+        // 2. Tunggak Duplicates
+        $stmtTunggak = $pdo->query("
+            SELECT a.NO_PDAM, b.NAMA, b.ALAMAT, DATE_FORMAT(a.REKENING_BULAN, '%Y%m') as periode, a.LOKBAY_ID, a.STGOL_ID,
+                   COUNT(*) as jml_kembar, SUM(a.JUMLAH) as tot_tunggak,
+                   GROUP_CONCAT(a.ID SEPARATOR ', ') as ids
+            FROM spd_tunggak a
+            JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+            WHERE a.LUNAS = 0 AND a.IS_DELETE = 0 AND a.PH IS NULL
+            GROUP BY a.NO_PDAM, DATE_FORMAT(a.REKENING_BULAN, '%Y%m')
+            HAVING COUNT(*) > 1
+            ORDER BY a.NO_PDAM ASC
+            LIMIT 100
+        ");
+        $tunggakDuplicates = $stmtTunggak->fetchAll(PDO::FETCH_ASSOC);
+
+        // 3. Cross Check (Silang) Tagrek vs Tunggak
+        $tglStart = substr($reqPeriode, 0, 4) . '-' . substr($reqPeriode, 4, 2) . '-01';
+        $tglEnd = substr($reqPeriode, 0, 4) . '-' . substr($reqPeriode, 4, 2) . '-31';
+        $stmtSilang = $pdo->prepare("
+            SELECT a.NO_PDAM, b.NAMA, b.ALAMAT, a.REKENING_BULAN as periode, a.LOKBAY_ID, a.STGOL_ID,
+                   a.JUMLAH as tagihan_tagrek, t.JUMLAH as tagihan_tunggak,
+                   a.ID as id_tagrek, t.ID as id_tunggak
+            FROM spd_tagrek a
+            JOIN spd_tunggak t ON t.NO_PDAM = a.NO_PDAM 
+                AND t.REKENING_BULAN BETWEEN :tgl_start AND :tgl_end
+                AND t.LUNAS = 0 AND t.IS_DELETE = 0 AND t.PH IS NULL
+            JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+            WHERE a.REKENING_BULAN = :periode AND a.IS_DELETE = 0 AND a.IS_YKK = 0
+            GROUP BY a.NO_PDAM
+            ORDER BY a.NO_PDAM ASC
+            LIMIT 100
+        ");
+        $stmtSilang->execute([
+            'tgl_start' => $tglStart,
+            'tgl_end' => $tglEnd,
+            'periode' => $reqPeriode
+        ]);
+        $silangDuplicates = $stmtSilang->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            "status" => "success",
+            "periode_tagrek" => $reqPeriode,
+            "data" => [
+                "tagrek_duplicates" => $tagrekDuplicates,
+                "tunggak_duplicates" => $tunggakDuplicates,
+                "silang_duplicates" => $silangDuplicates
+            ]
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
+} elseif ($action === 'get_angsuran_duplicates') {
+    try {
+        // Angsuran Duplicates di spd_angsuran
+        $stmtAngsur = $pdo->query("
+            SELECT a.STLGN_ID, b.NO_PDAM, b.NAMA, b.ALAMAT, a.KRITERIA, a.PERIODE, 
+                   COUNT(*) as jml_kembar,
+                   SUM(a.VOLUME) as tot_volume, SUM(a.AKUMBAYAR) as tot_akumbayar, SUM(a.VOLUME_ANGSUR) as tot_angsur,
+                   GROUP_CONCAT(a.ID SEPARATOR ', ') as ids
+            FROM spd_angsuran a
+            JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+            WHERE a.AKUMBAYAR < a.VOLUME
+            GROUP BY a.STLGN_ID, a.KRITERIA, a.PERIODE
+            HAVING COUNT(*) > 1
+            ORDER BY b.NO_PDAM ASC
+            LIMIT 100
+        ");
+        $angsuranDuplicates = $stmtAngsur->fetchAll(PDO::FETCH_ASSOC);
+
+        // Rekang Duplicates di spd_rekang (jika ada kembar pada tanggal dan pelanggan yang sama)
+        $stmtRekang = $pdo->query("
+            SELECT a.NO_PDAM, b.NAMA, a.TANGGAL, a.KRITERIA,
+                   COUNT(*) as jml_kembar, SUM(a.ANGPLAN) as tot_angplan,
+                   GROUP_CONCAT(a.ID SEPARATOR ', ') as ids
+            FROM spd_rekang a
+            JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+            WHERE a.TANGGAL >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+            GROUP BY a.NO_PDAM, a.TANGGAL, a.KRITERIA
+            HAVING COUNT(*) > 1
+            ORDER BY a.TANGGAL DESC
+            LIMIT 100
+        ");
+        $rekangDuplicates = $stmtRekang->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            "status" => "success",
+            "data" => [
+                "angsuran_duplicates" => $angsuranDuplicates,
+                "rekang_duplicates" => $rekangDuplicates
+            ]
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
 } else {
-    echo json_encode(["message" => "Welcome to API. Use ?action=beli, ?action=batal, ?action=dibeli, ?action=get_config, ?action=get_logs, ?action=get_backups, ?action=run_backup, ?action=run_restore, ?action=run_pipeline, ?action=get_pipeline_logs, ?action=get_server_metrics, or ?action=switch_db_server"]);
+    echo json_encode(["message" => "Welcome to API. Use ?action=beli, ?action=batal, ?action=dibeli, ?action=get_config, ?action=get_logs, ?action=get_backups, ?action=run_backup, ?action=run_restore, ?action=run_pipeline, ?action=get_pipeline_logs, ?action=get_audit_summary, ?action=get_uncontrolled_rekening, ?action=get_tagihan_duplicates, ?action=get_angsuran_duplicates, ?action=get_server_metrics, or ?action=switch_db_server"]);
 }
 

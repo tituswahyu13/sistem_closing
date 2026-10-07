@@ -669,11 +669,13 @@ function switchTab(tabId) {
     const pipelineSec = document.getElementById('pipeline-section');
     const backupSec = document.getElementById('backup-section');
     const closingRekeningSec = document.getElementById('closing-rekening-section');
+    const auditSec = document.getElementById('audit-section');
     
     // Reset all major section visibility
     if (pipelineSec) pipelineSec.style.display = (tabId === 'pipeline' || tabId === 'otomasi') ? 'block' : 'none';
     if (backupSec) backupSec.style.display = (tabId === 'backup') ? 'block' : 'none';
     if (closingRekeningSec) closingRekeningSec.style.display = (tabId === 'closing_rekening') ? 'block' : 'none';
+    if (auditSec) auditSec.style.display = (tabId === 'audit') ? 'block' : 'none';
     
     const isTableTab = (tabId === 'beli' || tabId === 'batal' || tabId === 'dibeli');
     if (tableContainer) tableContainer.style.display = isTableTab ? 'block' : 'none';
@@ -736,6 +738,13 @@ function switchTab(tabId) {
         loadRekeningConfig();
         loadRekeningPipelineLogs();
         startRekeningTabAutoPoller();
+    } else if (tabId === 'audit') {
+        pageTitle.textContent = 'Audit & Validasi Pra-Closing';
+        if (budgetPanel) budgetPanel.style.display = 'none';
+        loadAuditSummary();
+        loadUncontrolledRekening(1);
+        loadTagihanDuplicates();
+        loadAngsuranDuplicates();
     } else if (tabId === 'backup') {
         pageTitle.textContent = 'Pencadangan Database Otomatis';
         if (budgetPanel) budgetPanel.style.display = 'none';
@@ -3876,6 +3885,525 @@ loadServerMetrics();
 if (!serverMetricsPoller) {
     serverMetricsPoller = setInterval(loadServerMetrics, 15000);
 }
+
+// ====================================================================
+// AUDIT & VALIDASI PRA-CLOSING MODULE
+// ====================================================================
+let auditSummaryData = null;
+let uncontrolledCurrentPage = 1;
+let uncontrolledTotalPages = 1;
+let uncontrolledFiltersLoaded = false;
+let currentAuditSubtab = 'uncontrolled';
+
+// Subtab Navigation Switcher
+function switchAuditSubtab(subtabId) {
+    currentAuditSubtab = subtabId;
+    
+    // Toggle active class on buttons
+    document.querySelectorAll('[data-audit-tab]').forEach(btn => {
+        if (btn.getAttribute('data-audit-tab') === subtabId) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    // Toggle panels
+    const panelUncontrolled = document.getElementById('audit-subpanel-uncontrolled');
+    const panelTagihan = document.getElementById('audit-subpanel-tagihan');
+    const panelAngsuran = document.getElementById('audit-subpanel-angsuran');
+
+    if (panelUncontrolled) panelUncontrolled.style.display = (subtabId === 'uncontrolled') ? 'block' : 'none';
+    if (panelTagihan) panelTagihan.style.display = (subtabId === 'tagihan') ? 'block' : 'none';
+    if (panelAngsuran) panelAngsuran.style.display = (subtabId === 'angsuran') ? 'block' : 'none';
+}
+
+// Load Audit Summary
+async function loadAuditSummary() {
+    try {
+        const res = await fetch('api.php?action=get_audit_summary');
+        const json = await res.json();
+        
+        if (json.status === 'success') {
+            auditSummaryData = json;
+            const metrics = json.metrics || {};
+            const kesiapan = json.kesiapan || {};
+
+            // Update KPI numbers
+            const elUncontrolled = document.getElementById('audit-stat-uncontrolled');
+            const elTagrek = document.getElementById('audit-stat-tagrek-dup');
+            const elTunggak = document.getElementById('audit-stat-tunggak-dup');
+            const elAngsuran = document.getElementById('audit-stat-angsuran-dup');
+
+            if (elUncontrolled) elUncontrolled.textContent = (metrics.rekening_belum_kontrol || 0).toLocaleString('id-ID');
+            if (elTagrek) elTagrek.textContent = (metrics.tagrek_duplikat || 0).toLocaleString('id-ID');
+            if (elTunggak) elTunggak.textContent = ((metrics.tunggak_duplikat || 0) + (metrics.silang_duplikat || 0)).toLocaleString('id-ID');
+            if (elAngsuran) elAngsuran.textContent = (metrics.angsuran_duplikat || 0).toLocaleString('id-ID');
+
+            // Update sub-labels
+            const subUncontrolled = document.getElementById('audit-sub-uncontrolled');
+            if (subUncontrolled) {
+                const pct = metrics.rekening_total > 0 ? ((metrics.rekening_belum_kontrol / metrics.rekening_total) * 100).toFixed(1) : 0;
+                subUncontrolled.textContent = `${pct}% dari ${metrics.rekening_total.toLocaleString('id-ID')} rekening aktif`;
+            }
+
+            // Update subtab badges
+            const badgeTabUncontrolled = document.getElementById('subtab-badge-uncontrolled');
+            const badgeTabTagihan = document.getElementById('subtab-badge-tagihan');
+            const badgeTabAngsuran = document.getElementById('subtab-badge-angsuran');
+
+            if (badgeTabUncontrolled) {
+                badgeTabUncontrolled.textContent = (metrics.rekening_belum_kontrol || 0).toLocaleString('id-ID');
+                badgeTabUncontrolled.className = `badge ${metrics.rekening_belum_kontrol > 0 ? 'badge-warning' : 'badge-success'}`;
+            }
+            if (badgeTabTagihan) {
+                const totTagihanDup = (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.silang_duplikat || 0);
+                badgeTabTagihan.textContent = totTagihanDup.toLocaleString('id-ID');
+                badgeTabTagihan.className = `badge ${totTagihanDup > 0 ? 'badge-danger' : 'badge-success'}`;
+            }
+            if (badgeTabAngsuran) {
+                badgeTabAngsuran.textContent = (metrics.angsuran_duplikat || 0).toLocaleString('id-ID');
+                badgeTabAngsuran.className = `badge ${metrics.angsuran_duplikat > 0 ? 'badge-danger' : 'badge-success'}`;
+            }
+
+            // Update Overall Status Badge
+            const overallBadge = document.getElementById('audit-overall-status-badge');
+            if (overallBadge) {
+                if (kesiapan.status_keseluruhan === 'SIAP') {
+                    overallBadge.className = 'badge badge-success';
+                    overallBadge.innerHTML = '<i class="ph ph-shield-check"></i> Siap Closing (Data Bersih)';
+                } else {
+                    const totalIssues = (metrics.rekening_belum_kontrol || 0) + (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.angsuran_duplikat || 0);
+                    overallBadge.className = 'badge badge-warning';
+                    overallBadge.innerHTML = `<i class="ph ph-warning"></i> Perlu Perhatian (${totalIssues} Anomali)`;
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error loading audit summary:', e);
+    }
+}
+
+// Load Uncontrolled Rekening Table
+async function loadUncontrolledRekening(page = 1) {
+    uncontrolledCurrentPage = page;
+    const tbody = document.getElementById('tbody-uncontrolled-rekening');
+    const searchVal = document.getElementById('filter-uncontrolled-search')?.value.trim() || '';
+    const lokbayVal = document.getElementById('filter-uncontrolled-lokbay')?.value || '';
+    const stgolVal = document.getElementById('filter-uncontrolled-stgol')?.value || '';
+
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="10" style="text-align: center; color: var(--text-secondary); padding: 2rem;">
+                    <i class="ph ph-spinner spinner" style="font-size: 1.5rem; color: #38bdf8; display: block; margin: 0 auto 0.5rem;"></i>
+                    Memuat data rekening belum dikontrol (Halaman ${page})...
+                </td>
+            </tr>
+        `;
+    }
+
+    try {
+        const queryParams = new URLSearchParams({
+            action: 'get_uncontrolled_rekening',
+            page: page,
+            limit: 50,
+            search: searchVal,
+            lokbay: lokbayVal,
+            stgol: stgolVal
+        });
+
+        const res = await fetch(`api.php?${queryParams.toString()}`);
+        const json = await res.json();
+
+        if (json.status === 'success') {
+            uncontrolledTotalPages = json.total_pages || 1;
+            
+            // Populate select options if not populated
+            if (!uncontrolledFiltersLoaded && json.filters) {
+                const lokbaySelect = document.getElementById('filter-uncontrolled-lokbay');
+                const stgolSelect = document.getElementById('filter-uncontrolled-stgol');
+                
+                if (lokbaySelect && json.filters.lokbay) {
+                    json.filters.lokbay.forEach(opt => {
+                        const el = document.createElement('option');
+                        el.value = opt.ID;
+                        el.textContent = `${opt.ID} - ${opt.NAMA}`;
+                        lokbaySelect.appendChild(el);
+                    });
+                }
+                if (stgolSelect && json.filters.stgol) {
+                    json.filters.stgol.forEach(opt => {
+                        const el = document.createElement('option');
+                        el.value = opt.ID;
+                        el.textContent = `${opt.ID} - ${opt.KETERANGAN}`;
+                        stgolSelect.appendChild(el);
+                    });
+                }
+                uncontrolledFiltersLoaded = true;
+            }
+
+            // Render rows
+            if (tbody) {
+                if (!json.data || json.data.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="10" style="text-align: center; color: #10b981; padding: 2rem;">
+                                <i class="ph ph-check-circle" style="font-size: 1.5rem; display: block; margin: 0 auto 0.5rem;"></i>
+                                Seluruh rekening pada filter ini telah terkontrol (IS_CTRL = 1).
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbody.innerHTML = json.data.map(row => {
+                        const mtrLalu = parseInt(row.METERLALU || 0);
+                        const mtrKini = parseInt(row.METER || row.EDITMETER || 0);
+                        const mtrPakai = Math.max(0, mtrKini - mtrLalu);
+                        const estTagihan = parseInt(row.ESTIMASI_TAGIHAN || 0);
+
+                        return `
+                            <tr>
+                                <td><strong style="color: #60a5fa; font-family: monospace;">${row.NO_PDAM}</strong></td>
+                                <td><strong style="color: #fff;">${row.NAMA || '-'}</strong></td>
+                                <td style="color: var(--text-secondary); font-size: 0.78rem; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${row.ALAMAT || ''}">${row.ALAMAT || '-'}</td>
+                                <td><span class="badge badge-secondary">${row.STGOL_ID || '-'}</span></td>
+                                <td><span class="badge badge-secondary">${row.LOKBAY_ID || '-'}</span></td>
+                                <td style="text-align: right; font-family: monospace;">${mtrLalu.toLocaleString('id-ID')}</td>
+                                <td style="text-align: right; font-family: monospace; color: #38bdf8;">${mtrKini.toLocaleString('id-ID')}</td>
+                                <td style="text-align: right; font-family: monospace; font-weight: 600;">${mtrPakai.toLocaleString('id-ID')}</td>
+                                <td style="text-align: right; font-family: monospace; color: #34d399; font-weight: 600;">Rp ${estTagihan.toLocaleString('id-ID')}</td>
+                                <td style="text-align: center;">
+                                    <span class="badge badge-warning" style="font-size: 0.7rem; padding: 2px 6px;">
+                                        <i class="ph ph-clock"></i> Belum Ctrl
+                                    </span>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            }
+
+            // Update Pagination UI
+            const pageInfo = document.getElementById('uncontrolled-page-info');
+            const curPageEl = document.getElementById('uncontrolled-current-page');
+            const btnPrev = document.getElementById('btn-uncontrolled-prev');
+            const btnNext = document.getElementById('btn-uncontrolled-next');
+
+            const startIdx = json.total > 0 ? (page - 1) * json.limit + 1 : 0;
+            const endIdx = Math.min(page * json.limit, json.total);
+
+            if (pageInfo) pageInfo.textContent = `Menampilkan ${startIdx}-${endIdx} dari ${json.total.toLocaleString('id-ID')} data`;
+            if (curPageEl) curPageEl.textContent = `${page} / ${json.total_pages || 1}`;
+            if (btnPrev) btnPrev.disabled = (page <= 1);
+            if (btnNext) btnNext.disabled = (page >= json.total_pages);
+        }
+    } catch (e) {
+        console.error('Error loading uncontrolled rekening:', e);
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="10" style="text-align: center; color: #ef4444; padding: 2rem;">
+                        Gagal memuat data: ${e.message}
+                    </td>
+                </tr>
+            `;
+        }
+    }
+}
+
+// Load Tagihan Duplicates (spd_tagrek, spd_tunggak, cross-check)
+async function loadTagihanDuplicates() {
+    const tbodyTagrek = document.getElementById('tbody-tagrek-duplicates');
+    const tbodyTunggak = document.getElementById('tbody-tunggak-duplicates');
+    const tbodySilang = document.getElementById('tbody-silang-duplicates');
+
+    try {
+        const res = await fetch('api.php?action=get_tagihan_duplicates');
+        const json = await res.json();
+
+        if (json.status === 'success' && json.data) {
+            const data = json.data;
+
+            // 1. Tagrek Duplicates
+            const badgeTagrek = document.getElementById('badge-count-tagrek-dup');
+            if (badgeTagrek) badgeTagrek.textContent = `${(data.tagrek_duplicates || []).length} Duplikat`;
+            if (tbodyTagrek) {
+                if (!data.tagrek_duplicates || data.tagrek_duplicates.length === 0) {
+                    tbodyTagrek.innerHTML = `
+                        <tr>
+                            <td colspan="7" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ditemukan duplikasi di spd_tagrek (Bersih).
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbodyTagrek.innerHTML = data.tagrek_duplicates.map(row => `
+                        <tr>
+                            <td><strong style="color: #c084fc; font-family: monospace;">${row.NO_PDAM}</strong></td>
+                            <td><strong style="color: #fff;">${row.NAMA || '-'}</strong></td>
+                            <td style="color: var(--text-secondary); font-size: 0.78rem;">${row.ALAMAT || '-'}</td>
+                            <td><span class="badge badge-secondary">${row.REKENING_BULAN || '-'}</span></td>
+                            <td style="text-align: center;"><span class="badge badge-danger">${row.jml_kembar} Baris</span></td>
+                            <td style="text-align: right; font-family: monospace; color: #f87171; font-weight: 600;">Rp ${parseInt(row.tot_tagihan || 0).toLocaleString('id-ID')}</td>
+                            <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.ids || '-'}</td>
+                        </tr>
+                    `).join('');
+                }
+            }
+
+            // 2. Tunggak Duplicates
+            const badgeTunggak = document.getElementById('badge-count-tunggak-dup');
+            if (badgeTunggak) badgeTunggak.textContent = `${(data.tunggak_duplicates || []).length} Duplikat`;
+            if (tbodyTunggak) {
+                if (!data.tunggak_duplicates || data.tunggak_duplicates.length === 0) {
+                    tbodyTunggak.innerHTML = `
+                        <tr>
+                            <td colspan="7" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ditemukan duplikasi di spd_tunggak (Bersih).
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbodyTunggak.innerHTML = data.tunggak_duplicates.map(row => `
+                        <tr>
+                            <td><strong style="color: #f87171; font-family: monospace;">${row.NO_PDAM}</strong></td>
+                            <td><strong style="color: #fff;">${row.NAMA || '-'}</strong></td>
+                            <td style="color: var(--text-secondary); font-size: 0.78rem;">${row.ALAMAT || '-'}</td>
+                            <td><span class="badge badge-secondary">${row.periode || '-'}</span></td>
+                            <td style="text-align: center;"><span class="badge badge-danger">${row.jml_kembar} Baris</span></td>
+                            <td style="text-align: right; font-family: monospace; color: #f87171; font-weight: 600;">Rp ${parseInt(row.tot_tunggak || 0).toLocaleString('id-ID')}</td>
+                            <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.ids || '-'}</td>
+                        </tr>
+                    `).join('');
+                }
+            }
+
+            // 3. Silang Duplicates
+            const badgeSilang = document.getElementById('badge-count-silang-dup');
+            if (badgeSilang) badgeSilang.textContent = `${(data.silang_duplicates || []).length} Konflik`;
+            if (tbodySilang) {
+                if (!data.silang_duplicates || data.silang_duplicates.length === 0) {
+                    tbodySilang.innerHTML = `
+                        <tr>
+                            <td colspan="7" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ada konflik silang antara spd_tagrek dan spd_tunggak (Bersih).
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbodySilang.innerHTML = data.silang_duplicates.map(row => `
+                        <tr>
+                            <td><strong style="color: #fbbf24; font-family: monospace;">${row.NO_PDAM}</strong></td>
+                            <td><strong style="color: #fff;">${row.NAMA || '-'}</strong></td>
+                            <td><span class="badge badge-secondary">${row.periode || '-'}</span></td>
+                            <td style="text-align: right; font-family: monospace; color: #60a5fa;">Rp ${parseInt(row.tagihan_tagrek || 0).toLocaleString('id-ID')}</td>
+                            <td style="text-align: right; font-family: monospace; color: #f87171;">Rp ${parseInt(row.tagihan_tunggak || 0).toLocaleString('id-ID')}</td>
+                            <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.id_tagrek || '-'}</td>
+                            <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.id_tunggak || '-'}</td>
+                        </tr>
+                    `).join('');
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error loading tagihan duplicates:', e);
+    }
+}
+
+// Load Angsuran Duplicates (spd_angsuran, spd_rekang)
+async function loadAngsuranDuplicates() {
+    const tbodyAngsuran = document.getElementById('tbody-angsuran-duplicates');
+    const tbodyRekang = document.getElementById('tbody-rekang-duplicates');
+
+    try {
+        const res = await fetch('api.php?action=get_angsuran_duplicates');
+        const json = await res.json();
+
+        if (json.status === 'success' && json.data) {
+            const data = json.data;
+
+            // 1. Master Angsuran Duplicates
+            const badgeAngsuran = document.getElementById('badge-count-angsuran-dup');
+            if (badgeAngsuran) badgeAngsuran.textContent = `${(data.angsuran_duplicates || []).length} Duplikat`;
+            if (tbodyAngsuran) {
+                if (!data.angsuran_duplicates || data.angsuran_duplicates.length === 0) {
+                    tbodyAngsuran.innerHTML = `
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ditemukan duplikasi di master spd_angsuran (Bersih).
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbodyAngsuran.innerHTML = data.angsuran_duplicates.map(row => `
+                        <tr>
+                            <td><strong style="color: #38bdf8; font-family: monospace;">${row.NO_PDAM}</strong></td>
+                            <td><strong style="color: #fff;">${row.NAMA || '-'}</strong></td>
+                            <td><span class="badge badge-secondary">${row.KRITERIA || '-'}</span></td>
+                            <td><span class="badge badge-secondary">${row.PERIODE || '-'}</span></td>
+                            <td style="text-align: center;"><span class="badge badge-danger">${row.jml_kembar} Master</span></td>
+                            <td style="text-align: right; font-family: monospace;">Rp ${parseInt(row.tot_volume || 0).toLocaleString('id-ID')}</td>
+                            <td style="text-align: right; font-family: monospace; color: #34d399;">Rp ${parseInt(row.tot_akumbayar || 0).toLocaleString('id-ID')}</td>
+                            <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.ids || '-'}</td>
+                        </tr>
+                    `).join('');
+                }
+            }
+
+            // 2. Rekang Duplicates
+            const badgeRekang = document.getElementById('badge-count-rekang-dup');
+            if (badgeRekang) badgeRekang.textContent = `${(data.rekang_duplicates || []).length} Duplikat`;
+            if (tbodyRekang) {
+                if (!data.rekang_duplicates || data.rekang_duplicates.length === 0) {
+                    tbodyRekang.innerHTML = `
+                        <tr>
+                            <td colspan="7" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ditemukan duplikasi di spd_rekang (Bersih).
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbodyRekang.innerHTML = data.rekang_duplicates.map(row => `
+                        <tr>
+                            <td><strong style="color: #a5b4fc; font-family: monospace;">${row.NO_PDAM}</strong></td>
+                            <td><strong style="color: #fff;">${row.NAMA || '-'}</strong></td>
+                            <td><span class="badge badge-secondary">${row.TANGGAL || '-'}</span></td>
+                            <td><span class="badge badge-secondary">${row.KRITERIA || '-'}</span></td>
+                            <td style="text-align: center;"><span class="badge badge-danger">${row.jml_kembar} Baris</span></td>
+                            <td style="text-align: right; font-family: monospace; color: #f87171; font-weight: 600;">Rp ${parseInt(row.tot_angplan || 0).toLocaleString('id-ID')}</td>
+                            <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.ids || '-'}</td>
+                        </tr>
+                    `).join('');
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error loading angsuran duplicates:', e);
+    }
+}
+
+// Export Uncontrolled to CSV
+async function exportUncontrolledCSV() {
+    try {
+        const searchVal = document.getElementById('filter-uncontrolled-search')?.value.trim() || '';
+        const lokbayVal = document.getElementById('filter-uncontrolled-lokbay')?.value || '';
+        const stgolVal = document.getElementById('filter-uncontrolled-stgol')?.value || '';
+
+        const queryParams = new URLSearchParams({
+            action: 'get_uncontrolled_rekening',
+            page: 1,
+            limit: 5000,
+            search: searchVal,
+            lokbay: lokbayVal,
+            stgol: stgolVal
+        });
+
+        const res = await fetch(`api.php?${queryParams.toString()}`);
+        const json = await res.json();
+
+        if (json.status === 'success' && json.data) {
+            const rows = json.data;
+            if (rows.length === 0) {
+                showNotification('Export CSV', 'Tidak ada data rekening belum kontrol untuk diunduh.', 'warning');
+                return;
+            }
+
+            let csvContent = "NO_PDAM,NAMA,ALAMAT,GOLONGAN,LOKASI_BAYAR,METER_LALU,METER_KINI,METER_PAKAI,ESTIMASI_TAGIHAN\n";
+            rows.forEach(r => {
+                const mtrLalu = parseInt(r.METERLALU || 0);
+                const mtrKini = parseInt(r.METER || r.EDITMETER || 0);
+                const mtrPakai = Math.max(0, mtrKini - mtrLalu);
+                const estTagihan = parseInt(r.ESTIMASI_TAGIHAN || 0);
+                
+                const namaClean = (r.NAMA || '').replace(/"/g, '""');
+                const alamatClean = (r.ALAMAT || '').replace(/"/g, '""');
+
+                csvContent += `"${r.NO_PDAM}","${namaClean}","${alamatClean}","${r.STGOL_ID}","${r.LOKBAY_ID}",${mtrLalu},${mtrKini},${mtrPakai},${estTagihan}\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `rekening_belum_kontrol_${json.periode || 'aktif'}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showNotification('Export Berhasil', `Berhasil mengunduh ${rows.length} baris data ke format CSV.`, 'success');
+        }
+    } catch (e) {
+        showNotification('Gagal Export', 'Terjadi kesalahan saat mengekspor data: ' + e.message, 'error');
+    }
+}
+
+// Wire Audit Event Listeners
+document.addEventListener('DOMContentLoaded', () => {
+    // Subtab pills
+    document.querySelectorAll('[data-audit-tab]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const tab = e.currentTarget.getAttribute('data-audit-tab');
+            switchAuditSubtab(tab);
+        });
+    });
+
+    // KPI card clicks jump to respective sub-tab
+    document.getElementById('card-kpi-uncontrolled')?.addEventListener('click', () => switchAuditSubtab('uncontrolled'));
+    document.getElementById('card-kpi-tagrek')?.addEventListener('click', () => switchAuditSubtab('tagihan'));
+    document.getElementById('card-kpi-tunggak')?.addEventListener('click', () => switchAuditSubtab('tagihan'));
+    document.getElementById('card-kpi-angsuran')?.addEventListener('click', () => switchAuditSubtab('angsuran'));
+
+    // Refresh buttons
+    document.getElementById('btn-refresh-audit')?.addEventListener('click', () => {
+        loadAuditSummary();
+        loadUncontrolledRekening(uncontrolledCurrentPage);
+        loadTagihanDuplicates();
+        loadAngsuranDuplicates();
+        showNotification('Audit Diperbarui', 'Data validasi pra-closing telah disinkronkan.', 'info');
+    });
+
+    document.getElementById('btn-reload-uncontrolled')?.addEventListener('click', () => {
+        loadUncontrolledRekening(uncontrolledCurrentPage);
+    });
+
+    // Filter controls for uncontrolled
+    document.getElementById('btn-apply-uncontrolled-filter')?.addEventListener('click', () => {
+        loadUncontrolledRekening(1);
+    });
+
+    document.getElementById('filter-uncontrolled-search')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') loadUncontrolledRekening(1);
+    });
+
+    document.getElementById('filter-uncontrolled-lokbay')?.addEventListener('change', () => loadUncontrolledRekening(1));
+    document.getElementById('filter-uncontrolled-stgol')?.addEventListener('change', () => loadUncontrolledRekening(1));
+
+    document.getElementById('btn-reset-uncontrolled-filter')?.addEventListener('click', () => {
+        const s = document.getElementById('filter-uncontrolled-search');
+        const l = document.getElementById('filter-uncontrolled-lokbay');
+        const g = document.getElementById('filter-uncontrolled-stgol');
+        if (s) s.value = '';
+        if (l) l.value = '';
+        if (g) g.value = '';
+        loadUncontrolledRekening(1);
+    });
+
+    // Pagination buttons for uncontrolled
+    document.getElementById('btn-uncontrolled-prev')?.addEventListener('click', () => {
+        if (uncontrolledCurrentPage > 1) {
+            loadUncontrolledRekening(uncontrolledCurrentPage - 1);
+        }
+    });
+
+    document.getElementById('btn-uncontrolled-next')?.addEventListener('click', () => {
+        if (uncontrolledCurrentPage < uncontrolledTotalPages) {
+            loadUncontrolledRekening(uncontrolledCurrentPage + 1);
+        }
+    });
+
+    // Export CSV
+    document.getElementById('btn-export-uncontrolled-csv')?.addEventListener('click', exportUncontrolledCSV);
+});
 
 // ====================================================================
 // AUTHENTICATION & SESSION MANAGEMENT MODULE
