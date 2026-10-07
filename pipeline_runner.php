@@ -17,8 +17,7 @@ ini_set('memory_limit', '1024M');
 require_once __DIR__ . '/backup_simpadu.php';
 
 function getMasterPipelineDb() {
-    $envFile = __DIR__ . '/.env';
-    $env = file_exists($envFile) ? parse_ini_file($envFile) : [];
+    $env = loadBackupEnv();
     $host = !empty($env['DB_HOST']) ? $env['DB_HOST'] : 'localhost';
     $db   = !empty($env['DB_NAME']) ? $env['DB_NAME'] : 'simpadu';
     $user = !empty($env['DB_USER']) ? $env['DB_USER'] : 'root';
@@ -718,22 +717,279 @@ function executeClosingRekeningPipeline($params = []) {
         $pipelineResult['steps'][1] = ['name' => $step1Name, 'status' => 'SUCCESS', 'pesan' => $backupResult['message'], 'data' => $backupResult];
 
         // -------------------------------------------------------------
-        // TAHAP 2: TRANSAKSI CLOSING REKENING (KUERI MENYUSUL)
+        // TAHAP 2: TRANSAKSI CLOSING REKENING (TUTUP REKENING)
         // -------------------------------------------------------------
         $step2Name = "Tahap 2: Transaksi Closing Rekening";
         $log("\n>>> Menjalankan $step2Name...");
         $t2_start = date('Y-m-d H:i:s');
         recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start);
 
-        // Placeholder kueri closing rekening - siap diinjeksi
-        $log("ℹ Memproses kueri closing rekening periode $periodeBerjalan...");
-        usleep(300000);
+        // 1. Cek apakah masih ada rekening yang belum dikontrol (IS_CTRL = 0)
+        $stmtCtrl = $pdo->prepare("
+            SELECT COUNT(*) AS jumlah 
+            FROM spd_rekening
+            WHERE PERIODE = :periode AND STATUS IN ('A','T') AND IS_CTRL = 0
+        ");
+        $stmtCtrl->execute(['periode' => $periodeBerjalan]);
+        $resCtrl = $stmtCtrl->fetch(PDO::FETCH_ASSOC);
+        $jmlBelumCtrl = (int)($resCtrl['jumlah'] ?? 0);
 
-        $t2_end = date('Y-m-d H:i:s');
-        $pesanStep2 = "Closing rekening periode $periodeBerjalan sukses diselesaikan.";
-        $log("✓ $step2Name berhasil. $pesanStep2");
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'SUCCESS', $t2_start, $t2_end, $pesanStep2);
-        $pipelineResult['steps'][2] = ['name' => $step2Name, 'status' => 'SUCCESS', 'pesan' => $pesanStep2];
+        if ($jmlBelumCtrl > 0) {
+            throw new Exception("Tutup rekening dibatalkan. Masih terdapat {$jmlBelumCtrl} rekening yang belum dikontrol (IS_CTRL = 0) pada periode {$periodeBerjalan}.");
+        }
+        $log("   - Validasi kontrol meter: Semua rekening periode $periodeBerjalan sudah dikontrol (IS_CTRL = 1).");
+
+        // 2. Hitung Periode Baru & Periode Lalu
+        $curTahun = substr($periodeBerjalan, 0, 4);
+        $curBulan = substr($periodeBerjalan, 4, 2);
+
+        $dtNext = new DateTime("{$curTahun}-{$curBulan}-01");
+        $dtNext->modify('+1 month');
+        $nextTahun = $dtNext->format('Y');
+        $nextBulan = $dtNext->format('m');
+        $nextPeriode = $nextTahun . $nextBulan;
+
+        $dtPrev1 = new DateTime("{$curTahun}-{$curBulan}-01");
+        $dtPrev1->modify('-1 month');
+        $prevPeriode1 = $dtPrev1->format('Ym');
+
+        $dtPrev2 = new DateTime("{$curTahun}-{$curBulan}-01");
+        $dtPrev2->modify('-2 month');
+        $prevPeriode2 = $dtPrev2->format('Ym');
+
+        $log("   - Periode Aktif Berjalan: $periodeBerjalan ({$curBulan}-{$curTahun})");
+        $log("   - Periode Baru Dibuat: $nextPeriode ({$nextBulan}-{$nextTahun})");
+
+        // Memulai Transaksi Database
+        $pdo->beginTransaction();
+
+        try {
+            // A. Update SPD_ANGSURAN
+            $sqlAngsuran = "
+                UPDATE spd_angsuran a, (
+                    SELECT a.ID, a.STLGN_ID, a.KRITERIA,
+                    IF(a.VOLUME - a.AKUMBAYAR >= a.VOLUME_ANGSUR, a.VOLUME_ANGSUR, a.VOLUME - a.AKUMBAYAR) AS bayar
+                    FROM spd_angsuran a
+                    JOIN (
+                        SELECT b.STLGN_ID, MAX(b.PERIODE) AS PERIODE
+                        FROM spd_angsuran b
+                        GROUP BY b.STLGN_ID
+                    ) b ON b.STLGN_ID = a.STLGN_ID AND b.PERIODE = a.PERIODE
+                    WHERE ((a.KRITERIA = 'administrasi' AND a.AKUMBAYAR < a.VOLUME) OR (a.KRITERIA = 'angsuran' AND a.AKUMBAYAR < a.VOLUME))
+                    AND a.PERIODE < :next_periode
+                ) b
+                SET a.XRLANG = a.XRLANG + 1, a.AKUMBAYAR = CASE WHEN a.KRITERIA = 'angsuran' THEN a.AKUMBAYAR + b.bayar ELSE 0 END
+                WHERE a.ID = b.ID
+            ";
+            $stmtAngsur = $pdo->prepare($sqlAngsuran);
+            $stmtAngsur->execute(['next_periode' => $nextPeriode]);
+            $jmlAngsurUpdated = $stmtAngsur->rowCount();
+            $log("   - Update SPD_ANGSURAN: $jmlAngsurUpdated baris diperbarui.");
+
+            // B. Generate & Insert Rekening Periode Baru (SPD_REKENING)
+            // Hapus data periode baru jika sebelumnya pernah terbuat sebagian untuk idempotensi
+            $pdo->prepare("DELETE FROM spd_rekening WHERE PERIODE = :next_periode")->execute(['next_periode' => $nextPeriode]);
+
+            $sqlInsertRekening = "
+                INSERT INTO spd_rekening
+                SELECT NULL, a.ID, a.NO_PDAM, a.LOKBAY_ID, a.STGOL_ID, f.next_periode
+                    , 0 as meter, 0 as editmeter, IFNULL(IF(b.EDITMETER <> 0, b.EDITMETER, b.METER),0) AS meterlalu,
+                    ROUND(IFNULL(( b.VOLUME_REAL + c.VOLUME_REAL + d.VOLUME_REAL ) / CASE WHEN b.STATUS_PELANGGAN = 'PB' OR b.STATUS_PELANGGAN = 'PK' THEN 1 WHEN c.STATUS_PELANGGAN = 'PB' OR c.STATUS_PELANGGAN = 'PK' THEN 2 ELSE 3 END, 0),0) AS rata2, 0 AS
+                    cetak,0 AS non_air,0 AS SUBSIDI,0 AS rk,0 AS vol_real, 0 AS vol_tagihan,e.ADMINISTRASI,e.PEMELIHARAAN,0 AS mat,0 AS air,b.FLAG, NULL AS NOSERIAL, b.STATUS, NULL AS STATUS_PELANGGAN, b.IS_YKK, b.IS_TUNGGAK, 0 AS istutup, NULL AS keterangan, NULL AS longi, NULL AS lati,
+                    :user_c as user_c, :user_u as user_u, NOW() as time_c, NOW() as time_u, 0 as is_edit, 0 as tbaca, 0 as xbaca, 0 as is_ctrl, IF(IFNULL(g.VOLUME_ANGSUR, 0) > 0, 1, 0) as is_angsur, a.NO_PDAM AS image, IF(g.cnt_angsur IS NOT NULL, 1, 0) AS is_blmlunas
+                    , NULL AS stgol_lama, NULL as TGL_BACA, b.TGL_BACA as XTGL_BACA, g.VOLUME_ANGSUR as ANGSUR_AIR, NULL as TAGREK_TANGGAL
+                FROM spd_stlgn a CROSS
+                JOIN (
+                    SELECT :next_periode AS next_periode, :cur_tahun AS TAHUN, :cur_bulan AS BULAN
+                ) f
+                LEFT JOIN `spd_rekening` AS `b` ON b.PERIODE = :cur_periode AND b.STLGN_ID = a.ID
+                LEFT JOIN `spd_rekening` AS `c` ON c.PERIODE = :prev_periode1 AND c.STLGN_ID = a.ID
+                LEFT JOIN `spd_rekening` AS `d` ON d.PERIODE = :prev_periode2 AND d.STLGN_ID = a.ID
+                LEFT JOIN spd_biaya AS e ON e.ID = a.BIAYA_ID
+                LEFT JOIN (
+                    SELECT COUNT(*) AS cnt_angsur, a.STLGN_ID, sum(a.VOLUME_ANGSUR) as VOLUME_ANGSUR
+                    FROM spd_angsuran a
+                    LEFT JOIN (
+                        SELECT a.STLGN_ID, a.KRITERIA, IF(a.VOLUME - a.AKUMBAYAR < a.VOLUME_ANGSUR, a.VOLUME - a.AKUMBAYAR, a.VOLUME_ANGSUR) nilai_angsur
+                        FROM spd_angsuran a
+                        JOIN (
+                            SELECT b.STLGN_ID, MAX(b.PERIODE) AS PERIODE
+                            FROM spd_angsuran b
+                            GROUP BY b.STLGN_ID
+                        ) b ON b.STLGN_ID = a.STLGN_ID AND b.PERIODE = a.PERIODE
+                    ) b ON b.STLGN_ID = a.STLGN_ID
+                    WHERE ((a.KRITERIA = 'administrasi' AND a.AKUMBAYAR < a.VOLUME) OR (a.KRITERIA = 'angsuran' AND a.AKUMBAYAR < a.VOLUME)) 
+                    AND a.PERIODE < :next_periode_angsur
+                    GROUP BY STLGN_ID
+                ) g ON g.STLGN_ID = a.ID
+            ";
+            $stmtInsertRek = $pdo->prepare($sqlInsertRekening);
+            $stmtInsertRek->execute([
+                'user_c' => $userId,
+                'user_u' => $userId,
+                'next_periode' => $nextPeriode,
+                'cur_tahun' => $curTahun,
+                'cur_bulan' => $curBulan,
+                'cur_periode' => $periodeBerjalan,
+                'prev_periode1' => $prevPeriode1,
+                'prev_periode2' => $prevPeriode2,
+                'next_periode_angsur' => $nextPeriode
+            ]);
+            $jmlRekeningBaru = $stmtInsertRek->rowCount();
+            $log("   - Generate SPD_REKENING Periode Baru ($nextPeriode): $jmlRekeningBaru rekening berhasil digenerate.");
+
+            // C. Update Status Periode Lama (IS_TUTUP = 1) dan Tambah Periode Baru di SPD_PERIODE
+            $stmtTutupPeriode = $pdo->prepare("
+                UPDATE spd_periode 
+                SET IS_TUTUP = 1, TIME_TUTUP = NOW() 
+                WHERE TAHUN = :cur_tahun AND BULAN = :cur_bulan
+            ");
+            $stmtTutupPeriode->execute([
+                'cur_tahun' => $curTahun,
+                'cur_bulan' => $curBulan
+            ]);
+
+            // Cek apakah row periode baru sudah ada di spd_periode
+            $stmtCekNewPer = $pdo->prepare("SELECT COUNT(*) AS cnt FROM spd_periode WHERE TAHUN = :next_tahun AND BULAN = :next_bulan");
+            $stmtCekNewPer->execute(['next_tahun' => $nextTahun, 'next_bulan' => $nextBulan]);
+            if ((int)$stmtCekNewPer->fetchColumn() === 0) {
+                $stmtInsertNewPer = $pdo->prepare("
+                    INSERT INTO spd_periode (TAHUN, BULAN, IS_TUTUP, TIME_CREATED)
+                    VALUES (:next_tahun, :next_bulan, 0, NOW())
+                ");
+                $stmtInsertNewPer->execute(['next_tahun' => $nextTahun, 'next_bulan' => $nextBulan]);
+            } else {
+                $pdo->prepare("UPDATE spd_periode SET IS_TUTUP = 0, TIME_TUTUP = NULL WHERE TAHUN = :next_tahun AND BULAN = :next_bulan")
+                    ->execute(['next_tahun' => $nextTahun, 'next_bulan' => $nextBulan]);
+            }
+            $log("   - Update SPD_PERIODE: Periode $periodeBerjalan ditutup, Periode $nextPeriode diaktifkan.");
+
+            // D. Update SPD_BPPI
+            $sqlBppi = "
+                UPDATE spd_bppi a, (
+                    SELECT a.ID, b.ID as STLGN_ID, a.TANGGAL,
+                    IF((a.JUMLAH - a.AKUMBAYAR - a.DISKON) >= a.ANGPLAN, a.ANGPLAN, a.JUMLAH - a.AKUMBAYAR - a.DISKON) AS bayar,
+                    (a.JUMLAH - a.AKUMBAYAR - a.DISKON) AS TOTAL_HUTANG, a.XANGSUR, a.XRANGSUR
+                    FROM spd_bppi a
+                    JOIN spd_stlgn b ON (b.ID = a.STLGN_ID OR b.NO_PDAM = a.NO_PDAM) 
+                    JOIN spd_rekening c ON c.STLGN_ID = b.ID AND c.PERIODE = :cur_periode AND c.STATUS <> 'L'
+                    WHERE a.IS_DELETE = 0 AND a.XANGSUR > 0 AND a.AKUMBAYAR < a.JUMLAH AND a.ANGPLAN > 0
+                ) b
+                SET a.AKUMBAYAR = a.AKUMBAYAR + b.bayar,
+                    a.XRANGSUR = a.XRANGSUR + 1
+                WHERE a.ID = b.ID
+            ";
+            $stmtBppi = $pdo->prepare($sqlBppi);
+            $stmtBppi->execute(['cur_periode' => $periodeBerjalan]);
+            $jmlBppiUpdated = $stmtBppi->rowCount();
+            $log("   - Update SPD_BPPI: $jmlBppiUpdated baris angsuran BPPI diperbarui.");
+
+            // E. Update SPD_PIDENDA
+            $sqlPidenda = "
+                UPDATE spd_pidenda a, (
+                    SELECT a.ID, a.STLGN_ID, a.TANGGAL, 
+                    IF((a.JUMLAH - a.AKUMBAYAR) >= a.ANGPLAN, a.ANGPLAN, a.JUMLAH - a.AKUMBAYAR) AS bayar,
+                    (a.JUMLAH - a.AKUMBAYAR) AS TOTAL_HUTANG, a.XANGSUR, a.XRLANG
+                    FROM spd_pidenda a
+                    JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+                    JOIN spd_rekening c ON c.STLGN_ID = b.ID AND c.PERIODE = :cur_periode AND c.STATUS <> 'L'
+                    WHERE a.IS_DELETE = 0 AND a.XANGSUR > 0 AND a.AKUMBAYAR < a.JUMLAH AND a.ANGPLAN > 0
+                ) b
+                SET a.AKUMBAYAR = a.AKUMBAYAR + b.bayar,
+                    a.XRLANG = a.XRLANG + 1
+                WHERE a.ID = b.ID
+            ";
+            $stmtPidenda = $pdo->prepare($sqlPidenda);
+            $stmtPidenda->execute(['cur_periode' => $periodeBerjalan]);
+            $jmlPidendaUpdated = $stmtPidenda->rowCount();
+            $log("   - Update SPD_PIDENDA: $jmlPidendaUpdated baris angsuran denda diperbarui.");
+
+            // F. Memasukkan NON_AIR ke tabel SPD_REKENING periode baru ($nextPeriode)
+            $sqlNonAir = "
+                UPDATE spd_rekening a, (
+                    SELECT a.STLGN_ID, SUM(a.bayar) AS bayar, SUM(TOTAL_HUTANG) AS TOTAL_HUTANG, a.XANGSUR, a.XRANGSUR
+                    FROM (
+                        SELECT ifnull(a.STLGN_ID, b.ID) AS STLGN_ID, a.TANGGAL, 
+                        IF((a.JUMLAH - a.AKUMBAYAR - a.DISKON) >= a.ANGPLAN, a.ANGPLAN, a.JUMLAH - a.AKUMBAYAR - a.DISKON) AS bayar,
+                        (a.JUMLAH - a.AKUMBAYAR - a.DISKON) AS TOTAL_HUTANG, a.XANGSUR, a.XRANGSUR
+                        FROM spd_bppi a
+                        JOIN spd_stlgn b ON (b.ID = a.STLGN_ID OR b.NO_PDAM = a.NO_PDAM) 
+                        JOIN spd_rekening c ON c.STLGN_ID = b.ID AND c.PERIODE = :cur_periode AND c.STATUS <> 'L'
+                        WHERE a.AKUMBAYAR < a.JUMLAH AND a.IS_DELETE = 0 AND a.XANGSUR > 0 AND a.ANGPLAN > 0
+
+                        UNION ALL
+                        SELECT a.STLGN_ID, a.TANGGAL, 
+                        IF((a.JUMLAH - a.AKUMBAYAR) >= a.ANGPLAN, a.ANGPLAN, a.JUMLAH - a.AKUMBAYAR) AS bayar,
+                        (a.JUMLAH - a.AKUMBAYAR) AS TOTAL_HUTANG, a.XANGSUR, a.XRLANG
+                        FROM spd_pidenda a
+                        JOIN spd_stlgn b ON b.ID = a.STLGN_ID 
+                        JOIN spd_rekening c ON c.STLGN_ID = b.ID AND c.PERIODE = :cur_periode AND c.STATUS <> 'L'
+                        WHERE a.AKUMBAYAR < a.JUMLAH AND a.IS_DELETE = 0 AND a.XANGSUR > 0 AND a.ANGPLAN > 0
+                    ) a
+                    GROUP BY STLGN_ID
+                ) b 
+                SET a.NON_AIR = b.bayar 
+                WHERE a.STLGN_ID = b.STLGN_ID AND a.PERIODE = :next_periode
+            ";
+            $stmtNonAir = $pdo->prepare($sqlNonAir);
+            $stmtNonAir->execute([
+                'cur_periode' => $periodeBerjalan,
+                'next_periode' => $nextPeriode
+            ]);
+            $jmlNonAirUpdated = $stmtNonAir->rowCount();
+            $log("   - Update NON_AIR pada SPD_REKENING ($nextPeriode): $jmlNonAirUpdated rekening terupdate.");
+
+            // G. Panggil Stored Procedure insert_rekang
+            $lastDayNext = date('t', strtotime("{$nextTahun}-{$nextBulan}-01"));
+            $tglAkhirBulan = "{$nextTahun}-{$nextBulan}-{$lastDayNext}";
+            $log("   - Menjalankan Procedure CALL insert_rekang('$tglAkhirBulan', NULL, '$periodeBerjalan')...");
+            $pdo->exec("CALL insert_rekang('{$tglAkhirBulan}', NULL, '{$periodeBerjalan}')");
+            $log("   - Procedure insert_rekang berhasil dieksekusi.");
+
+            // H. Update SPD_REKENING periode sebelumnya: Merubah IS_TUTUPMETER menjadi 1
+            $stmtTutupMeter = $pdo->prepare("UPDATE spd_rekening SET IS_TUTUPMETER = 1 WHERE PERIODE = :cur_periode");
+            $stmtTutupMeter->execute(['cur_periode' => $periodeBerjalan]);
+            $jmlTutupMeter = $stmtTutupMeter->rowCount();
+            $log("   - Update IS_TUTUPMETER = 1 pada SPD_REKENING ($periodeBerjalan): $jmlTutupMeter baris.");
+
+            // I. Hitung Rekapitulasi Akhir
+            $stmtRekap = $pdo->prepare("
+                SELECT 
+                    COUNT(STLGN_ID) as jml_pelanggan,
+                    COALESCE(SUM(AIR), 0) as air,
+                    COALESCE(SUM(NON_AIR), 0) as non_air,
+                    COALESCE(SUM(PEMELIHARAAN), 0) as pemel,
+                    COALESCE(SUM(ADMINISTRASI), 0) as admin,
+                    COALESCE(SUM(CASE WHEN MATERAI = 10000 THEN 1 ELSE 0 END), 0) as pelmat,
+                    COALESCE(SUM(CASE WHEN MATERAI = 10000 THEN MATERAI ELSE 0 END), 0) as totmaterai
+                FROM spd_rekening
+                WHERE PERIODE = :cur_periode AND STATUS IN ('A','T')
+            ");
+            $stmtRekap->execute(['cur_periode' => $periodeBerjalan]);
+            $rekapData = $stmtRekap->fetch(PDO::FETCH_ASSOC);
+
+            // Selesai Transaksi
+            $pdo->commit();
+
+            $t2_end = date('Y-m-d H:i:s');
+            $jmlPelanggan = number_format((float)($rekapData['jml_pelanggan'] ?? 0), 0, ',', '.');
+            $totalAir = number_format((float)($rekapData['air'] ?? 0), 0, ',', '.');
+            $pesanStep2 = "Closing rekening periode $periodeBerjalan sukses. {$jmlPelanggan} pelanggan, Total Air: Rp {$totalAir}. Periode baru $nextPeriode berhasil dibuka.";
+            $log("✓ $step2Name berhasil. $pesanStep2");
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'SUCCESS', $t2_start, $t2_end, $pesanStep2, $rekapData);
+            $pipelineResult['steps'][2] = [
+                'name' => $step2Name,
+                'status' => 'SUCCESS',
+                'pesan' => $pesanStep2,
+                'data' => $rekapData
+            ];
+
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw new Exception("Gagal pada $step2Name: " . $e->getMessage());
+        }
 
         // -------------------------------------------------------------
         // TAHAP 3: TRANSAKSI TRANSFER PPOB (KUERI MENYUSUL)

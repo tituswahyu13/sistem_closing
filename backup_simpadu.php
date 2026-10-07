@@ -22,9 +22,25 @@ if (!function_exists('str_ends_with')) {
     }
 }
 
-function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
+function loadBackupEnv() {
     $envFile = __DIR__ . '/.env';
-    $env = file_exists($envFile) ? parse_ini_file($envFile) : [];
+    $env = [];
+    if (file_exists($envFile)) {
+        $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || $line[0] === '#') continue;
+            if (strpos($line, '=') !== false) {
+                list($k, $v) = explode('=', $line, 2);
+                $env[trim($k)] = trim(trim($v), '"\'');
+            }
+        }
+    }
+    return $env;
+}
+
+function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
+    $env = loadBackupEnv();
     $host = !empty($env['DB_HOST']) ? $env['DB_HOST'] : '192.168.0.10';
     $db   = !empty($env['DB_NAME']) ? $env['DB_NAME'] : 'simpadu';
     $user = !empty($env['DB_USER']) ? $env['DB_USER'] : 'root';
@@ -193,7 +209,7 @@ function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
 }
 
 // Jika dieksekusi langsung via CLI / Web
-if (php_sapi_name() === 'cli' || (isset($_SERVER['SCRIPT_FILENAME']) && realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILENAME']))) {
+if (isset($_SERVER['SCRIPT_FILENAME']) && realpath(__FILE__) === realpath($_SERVER['SCRIPT_FILENAME'])) {
     $typeArg = $argv[1] ?? ($_GET['type'] ?? 'MANUAL');
     $labelArg = $argv[2] ?? ($_GET['label'] ?? '');
     $res = executeBackup($typeArg, $labelArg);
