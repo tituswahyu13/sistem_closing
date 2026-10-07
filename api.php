@@ -1284,6 +1284,240 @@ if ($action === 'beli' || $action === 'batal') {
         http_response_code(500);
         echo json_encode(["status" => "error", "message" => $e->getMessage()]);
     }
+} elseif ($action === 'run_rekening_pipeline') {
+    try {
+        require_once __DIR__ . '/pipeline_runner.php';
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $userId = intval($input['user_id'] ?? 1);
+        $executedBy = $input['executed_by'] ?? 'WEB_DASHBOARD';
+
+        $result = executeClosingRekeningPipeline([
+            'executed_by' => $executedBy,
+            'user_id' => $userId
+        ]);
+
+        if ($result['success']) {
+            echo json_encode([
+                "status" => "success",
+                "message" => "Pipeline Closing Rekening berhasil dieksekusi!",
+                "data" => $result
+            ]);
+        } else {
+            http_response_code(500);
+            echo json_encode([
+                "status" => "error",
+                "message" => "Pipeline Closing Rekening gagal: " . ($result['error'] ?? 'Unknown error'),
+                "data" => $result
+            ]);
+        }
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
+} elseif ($action === 'get_rekening_pipeline_logs') {
+    try {
+        require_once __DIR__ . '/pipeline_runner.php';
+        initPipelineLogTable($pdo);
+
+        // Auto-resolve batch pipeline rekening yang menggantung (> 15 menit tanpa aktivitas)
+        $pdo->exec("
+            UPDATE pipeline_log 
+            SET status = 'FAILED', pesan = 'Dihentikan oleh sistem / Timeout', waktu_selesai = NOW()
+            WHERE batch_id LIKE 'BATCH_REK_%' AND status = 'RUNNING' AND TIMESTAMPDIFF(MINUTE, waktu_mulai, NOW()) > 15
+        ");
+
+        $limit = intval($_GET['limit'] ?? 50);
+        $stmt = $pdo->prepare("
+            SELECT * FROM pipeline_log 
+            WHERE batch_id LIKE 'BATCH_REK_%'
+            ORDER BY id DESC 
+            LIMIT :limit
+        ");
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Group by batch_id
+        $batches = [];
+        $hasActiveBatch = false;
+        foreach ($logs as $row) {
+            $bId = $row['batch_id'];
+            if (!isset($batches[$bId])) {
+                $batches[$bId] = [
+                    'batch_id' => $bId,
+                    'periode' => $row['periode'],
+                    'waktu_mulai' => $row['waktu_mulai'],
+                    'status' => 'SUCCESS',
+                    'steps' => []
+                ];
+            }
+            if ($row['status'] === 'FAILED') {
+                $batches[$bId]['status'] = 'FAILED';
+            } elseif ($row['status'] === 'RUNNING') {
+                $batches[$bId]['status'] = 'RUNNING';
+                $hasActiveBatch = true;
+            }
+            $batches[$bId]['steps'][] = $row;
+        }
+
+        // Cek progres realtime pencadangan database closing rekening (Tahap 1)
+        $activeBackup = null;
+        if ($hasActiveBatch) {
+            $backupDir = __DIR__ . '/backups';
+            if (is_dir($backupDir)) {
+                $files = glob($backupDir . '/simpadu_CLOSING_REKENING_*.sql.gz');
+                if ($files) {
+                    usort($files, function($a, $b) { return filemtime($b) - filemtime($a); });
+                    $latestFile = $files[0];
+                    $mtime = filemtime($latestFile);
+                    $sizeBytes = filesize($latestFile);
+                    $sizeMb = round($sizeBytes / (1024 * 1024), 2);
+                    $refSizeMb = 492.0;
+
+                    $isWriting = (time() - $mtime) < 30;
+                    $pct = min(100, round(($sizeMb / $refSizeMb) * 100));
+
+                    $activeBackup = [
+                        'is_writing' => $isWriting,
+                        'filename' => basename($latestFile),
+                        'current_size_mb' => $sizeMb,
+                        'estimated_total_mb' => $refSizeMb,
+                        'percent' => $pct,
+                        'display_text' => "$sizeMb MB / ~$refSizeMb MB ($pct%)"
+                    ];
+                }
+            }
+        }
+
+        echo json_encode([
+            "status" => "success",
+            "batches" => array_values($batches),
+            "raw_logs" => $logs,
+            "active_backup" => $activeBackup
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
+} elseif ($action === 'get_rekening_config') {
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS rekening_config (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                periode VARCHAR(6) NOT NULL,
+                jadwal_eksekusi DATETIME NOT NULL,
+                status ENUM('PENDING', 'RUNNING', 'SUCCESS', 'FAILED', 'CANCELLED') DEFAULT 'PENDING',
+                user_id_input INT DEFAULT 1,
+                waktu_input DATETIME DEFAULT CURRENT_TIMESTAMP,
+                waktu_eksekusi DATETIME NULL,
+                pesan_terakhir TEXT NULL,
+                INDEX idx_rek_per (periode),
+                INDEX idx_rek_stat (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+
+        $pdo->exec("
+            UPDATE rekening_config 
+            SET status = 'FAILED', pesan_terakhir = 'Jadwal kedaluwarsa / Timeout'
+            WHERE status = 'RUNNING' AND TIMESTAMPDIFF(MINUTE, COALESCE(waktu_eksekusi, jadwal_eksekusi), NOW()) > 30
+        ");
+        $pdo->exec("
+            UPDATE rekening_config 
+            SET status = 'FAILED', pesan_terakhir = 'Jadwal terlewati tanpa dieksekusi'
+            WHERE status = 'PENDING' AND TIMESTAMPDIFF(MINUTE, jadwal_eksekusi, NOW()) > 60
+        ");
+
+        $stmt = $pdo->query("SELECT * FROM rekening_config ORDER BY id DESC LIMIT 10");
+        $configs = $stmt ? $stmt->fetchAll() : [];
+
+        $perRekening = $pdo->query("SELECT * FROM spd_periode WHERE IS_TUTUP = 0 LIMIT 1")->fetch();
+        $periodeAktif = $perRekening ? sprintf("%04d%02d", $perRekening['TAHUN'], $perRekening['BULAN']) : date('Ym');
+
+        echo json_encode([
+            "status" => "success",
+            "data" => $configs,
+            "periode_aktif_db" => $periodeAktif,
+            "server_time" => date('Y-m-d H:i:s')
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["error" => $e->getMessage()]);
+    }
+} elseif ($action === 'save_rekening_config') {
+    try {
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $periodeRek = trim($input['periode'] ?? date('Ym'));
+        $jadwal = trim($input['jadwal_eksekusi'] ?? '');
+        $userId = intval($input['user_id'] ?? 1);
+
+        if (empty($jadwal)) {
+            throw new Exception("Jadwal eksekusi harus diisi.");
+        }
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS rekening_config (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                periode VARCHAR(6) NOT NULL,
+                jadwal_eksekusi DATETIME NOT NULL,
+                status ENUM('PENDING', 'RUNNING', 'SUCCESS', 'FAILED', 'CANCELLED') DEFAULT 'PENDING',
+                user_id_input INT DEFAULT 1,
+                waktu_input DATETIME DEFAULT CURRENT_TIMESTAMP,
+                waktu_eksekusi DATETIME NULL,
+                pesan_terakhir TEXT NULL,
+                INDEX idx_rek_per (periode),
+                INDEX idx_rek_stat (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ");
+
+        $stmt = $pdo->prepare("
+            INSERT INTO rekening_config (periode, jadwal_eksekusi, status, user_id_input, waktu_input)
+            VALUES (:periode, :jadwal, 'PENDING', :user_id, NOW())
+        ");
+        $stmt->execute([
+            'periode' => $periodeRek,
+            'jadwal' => $jadwal,
+            'user_id' => $userId
+        ]);
+
+        echo json_encode([
+            "status" => "success",
+            "message" => "Jadwal otomasi Closing Rekening berhasil disimpan."
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
+} elseif ($action === 'reset_rekening_pipeline_status') {
+    try {
+        require_once __DIR__ . '/pipeline_runner.php';
+        initPipelineLogTable($pdo);
+
+        try {
+            $pdo->exec("
+                UPDATE rekening_config 
+                SET status = 'CANCELLED', pesan_terakhir = 'Direset ke Standby oleh Operator'
+                WHERE status IN ('PENDING', 'RUNNING')
+            ");
+        } catch (Exception $e) {}
+
+        $pdo->exec("
+            UPDATE pipeline_log 
+            SET status = 'CANCELLED', pesan = 'Direset ke Standby oleh Operator', waktu_selesai = NOW()
+            WHERE batch_id LIKE 'BATCH_REK_%' AND status = 'RUNNING'
+        ");
+
+        try {
+            $pdo->exec("UPDATE pdam.info SET OFFLINE = '1'");
+        } catch (Exception $e) {}
+
+        echo json_encode([
+            "status" => "success",
+            "message" => "Status alur Closing Rekening & antrean jadwal berhasil di-reset ke Standby."
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
 } elseif ($action === 'get_server_metrics') {
     try {
         // 1. Storage / Disk

@@ -654,12 +654,15 @@ function switchTab(tabId) {
     const activeNav = document.querySelector(`[data-tab="${tabId}"]`);
     if (activeNav) activeNav.classList.add('active');
     
-    // Always stop background pollers when leaving pipeline/backup tabs
+    // Always stop background pollers when leaving pipeline/backup/rekening tabs
     if (tabId !== 'pipeline' && tabId !== 'otomasi') {
         stopPipelineTabAutoPoller();
     }
     if (tabId !== 'backup') {
         stopBackupTabAutoPoller();
+    }
+    if (tabId !== 'closing_rekening') {
+        stopRekeningTabAutoPoller();
     }
 
     const tableContainer = document.querySelector('.table-container');
@@ -721,21 +724,18 @@ function switchTab(tabId) {
         loadPipelineLogs();
         startPipelineTabAutoPoller();
     } else if (tabId === 'closing_rekening') {
-        pageTitle.textContent = 'Closing Rekening Air Bulanan';
+        pageTitle.textContent = 'Closing Rekening (Pipeline 6-Tahap Otomasi)';
         if (budgetPanel) budgetPanel.style.display = 'none';
         
         // Update Rekening Info from active metrics
-        const rekeningPeriodEl = document.getElementById('rekening-period-display');
         const rekeningDbEl = document.getElementById('rekening-db-indicator');
-        if (lastMetricsData) {
-            if (rekeningPeriodEl && lastMetricsData.closing_ops) {
-                rekeningPeriodEl.textContent = `${lastMetricsData.closing_ops.active_period_formatted || lastMetricsData.closing_ops.active_period}`;
-            }
-            if (rekeningDbEl && lastMetricsData.database) {
-                rekeningDbEl.textContent = `DB: ${lastMetricsData.database.label || lastMetricsData.database.host}`;
-                rekeningDbEl.className = `badge ${lastMetricsData.database.env_type === 'Production' ? 'badge-prod' : 'badge-dev'}`;
-            }
+        if (lastMetricsData && lastMetricsData.database && rekeningDbEl) {
+            rekeningDbEl.textContent = `DB: ${lastMetricsData.database.label || lastMetricsData.database.host}`;
+            rekeningDbEl.className = `badge ${lastMetricsData.database.env_type === 'Production' ? 'badge-prod' : 'badge-dev'}`;
         }
+        loadRekeningConfig();
+        loadRekeningPipelineLogs();
+        startRekeningTabAutoPoller();
     } else if (tabId === 'backup') {
         pageTitle.textContent = 'Pencadangan Database Otomatis';
         if (budgetPanel) budgetPanel.style.display = 'none';
@@ -2679,13 +2679,745 @@ if (btnResetPipelineStepper) {
     });
 }
 
+// ==========================================
+// CLOSING REKENING PIPELINE & SCHEDULER
+// ==========================================
+
+const rekStepNamesDef = [
+    'Maintenance Mode (OFFLINE = 0)',
+    'Pencadangan Database simpadu',
+    'Closing Rekening',
+    'Transfer PPOB',
+    'Pelunasan Rumah Ibadah',
+    'Mode Online Kembali (OFFLINE = 1)'
+];
+
+let rekeningCountdownInterval = null;
+let rekeningTabAutoPoller = null;
+let rekeningLiveTimerInterval = null;
+let rekeningStartTimestamp = null;
+let isManualRekeningReset = false;
+
+// Rekening Elements
+const formRekeningSchedule = document.getElementById('form-rekening-schedule');
+const cfgRekeningPeriode = document.getElementById('cfg-rekening-periode');
+const cfgRekeningJadwal = document.getElementById('cfg-rekening-jadwal');
+const btnPresetRek2Min = document.getElementById('btn-preset-rek-2min');
+const btnPresetRek1st = document.getElementById('btn-preset-rek-1st');
+const btnSaveRekeningConfig = document.getElementById('btn-save-rekening-config');
+const btnRefreshRekeningConfigs = document.getElementById('btn-refresh-rekening-configs');
+const rekeningConfigTbody = document.getElementById('rekening-config-tbody');
+
+const btnRunRekeningPipeline = document.getElementById('btn-run-rekening-pipeline');
+const btnRefreshRekeningLogs = document.getElementById('btn-refresh-rekening-logs');
+const btnResetRekeningStepper = document.getElementById('btn-reset-rekening-stepper');
+const pipelineRekeningHistoryTbody = document.getElementById('pipeline-rekening-history-tbody');
+const pipelineRekeningConsoleOutput = document.getElementById('pipeline-rekening-console-output');
+const pipelineRekeningBatchIdBadge = document.getElementById('pipeline-rekening-batch-id-badge');
+const pipelineRekeningLiveIndicator = document.getElementById('pipeline-rekening-live-indicator');
+const pipelineRekeningStatusBadge = document.getElementById('pipeline-rekening-status-badge');
+
+function getDefault1stSchedule(periode) {
+    if (!periode || periode.length !== 6) return '';
+    let y = parseInt(periode.substring(0, 4), 10);
+    let m = parseInt(periode.substring(4, 6), 10);
+    m += 1;
+    if (m > 12) {
+        m = 1;
+        y += 1;
+    }
+    const mm = String(m).padStart(2, '0');
+    return `${y}-${mm}-01T00:00`;
+}
+
+function startRekeningCountdownTimer(targetDateStr, status) {
+    if (rekeningCountdownInterval) {
+        clearInterval(rekeningCountdownInterval);
+        rekeningCountdownInterval = null;
+    }
+
+    const timerEl = document.getElementById('rekening-countdown-timer');
+    const detailEl = document.getElementById('rekening-countdown-detail');
+    const badgeEl = document.getElementById('pipeline-rekening-status-badge');
+
+    if (!targetDateStr || status === 'COMPLETED' || status === 'SUCCESS') {
+        if (timerEl) timerEl.textContent = 'STANDBY';
+        if (detailEl) detailEl.textContent = status === 'SUCCESS' ? 'Eksekusi batch closing rekening terakhir selesai sukses.' : 'Sistem siap untuk eksekusi closing rekening bulanan.';
+        if (badgeEl) {
+            badgeEl.className = 'badge badge-success';
+            badgeEl.innerHTML = '<i class="ph ph-check-circle"></i> Standby (Selesai)';
+        }
+        return;
+    }
+
+    const targetTime = new Date(targetDateStr.replace(' ', 'T')).getTime();
+
+    function update() {
+        const now = new Date().getTime();
+        const diff = targetTime - now;
+
+        if (diff <= 0) {
+            if (diff < -15 * 60 * 1000) {
+                if (timerEl) timerEl.textContent = 'STANDBY';
+                if (detailEl) detailEl.textContent = `Jadwal ${targetDateStr} telah terlewati. Silakan tentukan jadwal baru.`;
+                if (badgeEl) {
+                    badgeEl.className = 'badge badge-secondary';
+                    badgeEl.textContent = 'KEDALUWARSA / STANDBY';
+                }
+                if (rekeningCountdownInterval) {
+                    clearInterval(rekeningCountdownInterval);
+                    rekeningCountdownInterval = null;
+                }
+                return;
+            }
+
+            if (timerEl) timerEl.textContent = '00:00:00 (Jatuh Tempo)';
+            if (badgeEl) {
+                badgeEl.className = 'badge badge-warning';
+                badgeEl.textContent = 'MENGEKSEKUSI...';
+            }
+            if (rekeningCountdownInterval) {
+                clearInterval(rekeningCountdownInterval);
+                rekeningCountdownInterval = null;
+            }
+            return;
+        }
+
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+        let timerText = '';
+        if (days > 0) timerText += `${days}h `;
+        timerText += `${String(hours).padStart(2, '0')}j ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}d`;
+
+        if (timerEl) timerEl.textContent = timerText;
+        if (detailEl) detailEl.textContent = `Target: ${targetDateStr}`;
+        if (badgeEl) {
+            badgeEl.className = 'badge badge-info';
+            badgeEl.innerHTML = `<i class="ph ph-clock"></i> PENDING (${days > 0 ? days + ' hari lagi' : (hours > 0 ? hours + ' jam ' : '') + minutes + 'm ' + seconds + 's'})`;
+        }
+    }
+
+    update();
+    rekeningCountdownInterval = setInterval(update, 1000);
+}
+
+async function loadRekeningConfig() {
+    try {
+        const res = await fetch('api.php?action=get_rekening_config');
+        const json = await res.json();
+        const displayAuto = document.getElementById('display-auto-rekening-periode');
+        const targetPeriode = json.target_periode_eksekusi || '202609';
+
+        if (cfgRekeningPeriode) {
+            cfgRekeningPeriode.value = targetPeriode;
+        }
+        if (displayAuto) {
+            displayAuto.textContent = `${targetPeriode} (Aktif SIMPADU: ${json.periode_aktif_db || '-'})`;
+        }
+
+        if (json.status === 'success' && json.data && json.data.length > 0) {
+            let activeCfg = json.data.find(c => c.status === 'PENDING');
+            if (!activeCfg) activeCfg = json.data.find(c => c.status === 'RUNNING');
+            if (!activeCfg) activeCfg = json.data.find(c => c.periode === targetPeriode);
+            if (!activeCfg) activeCfg = json.data[0];
+
+            if (cfgRekeningJadwal && activeCfg.jadwal_eksekusi) {
+                const dt = new Date(activeCfg.jadwal_eksekusi.replace(' ', 'T'));
+                cfgRekeningJadwal.value = formatDatetimeForInput(dt);
+            }
+            startRekeningCountdownTimer(activeCfg.jadwal_eksekusi, activeCfg.status);
+
+            if (rekeningConfigTbody) {
+                let html = '';
+                json.data.forEach(cfg => {
+                    let badgeClass = 'badge-info';
+                    if (cfg.status === 'SUCCESS') badgeClass = 'badge-success';
+                    else if (cfg.status === 'FAILED') badgeClass = 'badge-danger';
+                    else if (cfg.status === 'RUNNING') badgeClass = 'badge-warning';
+
+                    const catatan = cfg.pesan_terakhir || '-';
+
+                    html += `
+                        <tr>
+                            <td><strong>#${cfg.id}</strong></td>
+                            <td><span class="badge badge-purple">${cfg.periode}</span></td>
+                            <td><strong>${cfg.jadwal_eksekusi}</strong></td>
+                            <td><span class="badge ${badgeClass}">${cfg.status}</span></td>
+                            <td><small style="max-width: 180px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${catatan}">${catatan}</small></td>
+                        </tr>
+                    `;
+                });
+                rekeningConfigTbody.innerHTML = html;
+            }
+        } else {
+            if (cfgRekeningJadwal && !cfgRekeningJadwal.value) {
+                cfgRekeningJadwal.value = getDefault1stSchedule(targetPeriode);
+            }
+            startRekeningCountdownTimer(cfgRekeningJadwal ? cfgRekeningJadwal.value.replace('T', ' ') : null, 'PENDING');
+            if (rekeningConfigTbody) {
+                rekeningConfigTbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 1.5rem;">Belum ada jadwal antrean tercatat untuk closing rekening.</td></tr>';
+            }
+        }
+    } catch (e) {
+        console.error('Gagal mengambil konfigurasi closing rekening:', e);
+    }
+}
+
+function updateRekeningProgressUI(stepIndex, status, customTitle, isDone = false) {
+    const fill = document.getElementById('pipeline-rekening-progress-fill');
+    const percentEl = document.getElementById('pipeline-rekening-progress-percent');
+    const titleEl = document.getElementById('pipeline-rekening-progress-phase-title');
+    const radar = document.getElementById('pipeline-rekening-radar-pulse');
+
+    if (!fill || !percentEl || !titleEl) return;
+
+    let pct = 0;
+    if (isDone) {
+        pct = 100;
+    } else if (stepIndex >= 0) {
+        const stepPct = [16, 33, 50, 66, 83, 95];
+        pct = stepPct[stepIndex] || Math.round(((stepIndex + 1) / 6) * 100);
+        if (status === 'RUNNING') {
+            pct = Math.max(8, pct - 8);
+        }
+    }
+
+    fill.style.width = `${pct}%`;
+    percentEl.textContent = `${pct}%`;
+
+    if (customTitle) {
+        titleEl.textContent = customTitle;
+    } else if (stepIndex >= 0 && rekStepNamesDef[stepIndex]) {
+        titleEl.textContent = (status === 'RUNNING' ? 'Sedang Memproses ' : 'Selesai ') + rekStepNamesDef[stepIndex];
+    } else if (isDone) {
+        titleEl.textContent = 'Semua 6 Tahapan Closing Rekening Selesai dengan Sukses!';
+    } else {
+        titleEl.textContent = 'Standby: Siap Dijalankan';
+    }
+
+    if (radar) {
+        radar.className = 'radar-pulse-dot';
+        if (status === 'RUNNING') radar.classList.add('running');
+        else if (status === 'SUCCESS' || isDone) radar.classList.add('success');
+        else if (status === 'FAILED') radar.classList.add('failed');
+    }
+
+    for (let i = 0; i <= 5; i++) {
+        const sub = document.getElementById(`subtext-rek-step-${i}`);
+        if (!sub) continue;
+        sub.classList.remove('active', 'done');
+        if (i < stepIndex || isDone) {
+            sub.classList.add('done');
+        } else if (i === stepIndex) {
+            if (status === 'RUNNING') sub.classList.add('active');
+            else if (status === 'SUCCESS') sub.classList.add('done');
+        }
+    }
+}
+
+function startRekeningStopwatch() {
+    stopRekeningStopwatch();
+    rekeningStartTimestamp = Date.now();
+    const timerBadge = document.getElementById('pipeline-rekening-live-timer');
+    rekeningLiveTimerInterval = setInterval(() => {
+        if (!timerBadge) return;
+        const elapsedSec = Math.floor((Date.now() - rekeningStartTimestamp) / 1000);
+        const m = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+        const s = String(elapsedSec % 60).padStart(2, '0');
+        timerBadge.innerHTML = `<i class="ph ph-timer"></i> ${m}:${s}`;
+    }, 1000);
+}
+
+function stopRekeningStopwatch(finalText = null) {
+    if (rekeningLiveTimerInterval) {
+        clearInterval(rekeningLiveTimerInterval);
+        rekeningLiveTimerInterval = null;
+    }
+    const timerBadge = document.getElementById('pipeline-rekening-live-timer');
+    if (timerBadge && finalText) {
+        timerBadge.innerHTML = `<i class="ph ph-check-circle"></i> ${finalText}`;
+    }
+}
+
+function updateRekeningStepCardUI(stepNum, status, metaText) {
+    const card = document.getElementById(`rek-step-card-${stepNum}`);
+    const badge = document.getElementById(`rek-step-badge-${stepNum}`);
+    const meta = document.getElementById(`rek-step-meta-${stepNum}`);
+    if (!card || !badge) return;
+
+    card.classList.remove('active', 'success', 'failed');
+    if (status === 'RUNNING') {
+        card.classList.add('active');
+        badge.innerHTML = '<i class="ph ph-spinner spinner"></i> PROSES';
+    } else if (status === 'SUCCESS') {
+        card.classList.add('success');
+        badge.innerHTML = '<i class="ph ph-check"></i> SUKSES';
+    } else if (status === 'FAILED') {
+        card.classList.add('failed');
+        badge.innerHTML = '<i class="ph ph-x"></i> GAGAL';
+    } else {
+        badge.textContent = 'STANDBY';
+    }
+
+    if (meta && metaText) {
+        meta.textContent = metaText;
+    }
+
+    const connectors = document.querySelectorAll('#closing-rekening-section .pipeline-stepper-grid .step-connector');
+    if (connectors && connectors.length > stepNum) {
+        const conn = connectors[stepNum];
+        if (conn) {
+            conn.classList.remove('active', 'done');
+            if (status === 'SUCCESS') conn.classList.add('done');
+            else if (status === 'RUNNING') conn.classList.add('active');
+        }
+    }
+}
+
+function resetAllRekeningStepCards() {
+    for (let i = 0; i <= 5; i++) {
+        updateRekeningStepCardUI(i, 'STANDBY', '-');
+    }
+    const connectors = document.querySelectorAll('#closing-rekening-section .pipeline-stepper-grid .step-connector');
+    if (connectors) {
+        connectors.forEach(c => c.classList.remove('active', 'done'));
+    }
+    if (pipelineRekeningBatchIdBadge) pipelineRekeningBatchIdBadge.textContent = 'Batch: Siap Dijalankan';
+    if (pipelineRekeningLiveIndicator) {
+        pipelineRekeningLiveIndicator.textContent = 'IDLE';
+        pipelineRekeningLiveIndicator.className = 'badge badge-secondary';
+    }
+    if (pipelineRekeningStatusBadge) {
+        pipelineRekeningStatusBadge.innerHTML = '<i class="ph ph-shield-check"></i> Siap Eksekusi';
+        pipelineRekeningStatusBadge.className = 'badge badge-info';
+    }
+    const queryTicker = document.getElementById('pipeline-rekening-query-ticker');
+    const tableBadge = document.getElementById('pipeline-rekening-active-table-badge');
+    if (queryTicker) {
+        queryTicker.textContent = 'Standby: Menunggu eksekusi pipeline closing rekening...';
+    }
+    if (tableBadge) {
+        tableBadge.textContent = 'Tabel: -';
+    }
+    updateRekeningProgressUI(-1, 'STANDBY', 'Standby: Menunggu Eksekusi', false);
+    stopRekeningStopwatch();
+    const timerBadge = document.getElementById('pipeline-rekening-live-timer');
+    if (timerBadge) timerBadge.innerHTML = '<i class="ph ph-timer"></i> 00:00';
+}
+
+function startRekeningTabAutoPoller() {
+    if (rekeningTabAutoPoller) clearInterval(rekeningTabAutoPoller);
+    rekeningTabAutoPoller = setInterval(() => {
+        loadRekeningPipelineLogs();
+    }, 2000);
+}
+
+function stopRekeningTabAutoPoller() {
+    if (rekeningTabAutoPoller) {
+        clearInterval(rekeningTabAutoPoller);
+        rekeningTabAutoPoller = null;
+    }
+}
+
+async function loadRekeningPipelineLogs() {
+    if (!pipelineRekeningHistoryTbody) return;
+
+    try {
+        const res = await fetch('api.php?action=get_rekening_pipeline_logs&limit=50');
+        const json = await res.json();
+
+        if (json.status === 'success' && json.batches && json.batches.length > 0) {
+            let html = '';
+            json.batches.forEach(b => {
+                const isSuccess = b.status === 'SUCCESS';
+                const badgeClass = isSuccess ? 'badge-success' : (b.status === 'RUNNING' ? 'badge-warning' : 'badge-danger');
+                const badgeIcon = isSuccess ? 'ph-check-circle' : (b.status === 'RUNNING' ? 'ph-spinner spinner' : 'ph-x-circle');
+                const stepCount = b.steps ? b.steps.length : 0;
+
+                html += `
+                    <tr>
+                        <td><code style="color: #38bdf8; font-size: 0.75rem;">${b.batch_id}</code></td>
+                        <td><strong>${b.periode}</strong></td>
+                        <td>${b.waktu_mulai}</td>
+                        <td>
+                            <span class="badge ${badgeClass}">
+                                <i class="ph ${badgeIcon}"></i> ${b.status} (${stepCount}/6 Tahap)
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            });
+            pipelineRekeningHistoryTbody.innerHTML = html;
+
+            const latestBatch = json.batches[0];
+            const isAnyRunning = json.batches.some(b => b.status === 'RUNNING');
+            if (isAnyRunning) {
+                isManualRekeningReset = false;
+                localStorage.removeItem('rekening_view_standby');
+            }
+
+            const isStandbyActive = (isManualRekeningReset || localStorage.getItem('rekening_view_standby') === '1') && !isAnyRunning;
+
+            if (isStandbyActive) {
+                resetAllRekeningStepCards();
+            } else if (latestBatch && latestBatch.steps) {
+                if (pipelineRekeningBatchIdBadge) {
+                    pipelineRekeningBatchIdBadge.textContent = `Batch: ${latestBatch.batch_id} (${latestBatch.periode})`;
+                }
+
+                for (let i = 0; i <= 5; i++) {
+                    updateRekeningStepCardUI(i, 'STANDBY', '');
+                }
+
+                let highestStep = -1;
+                let hasRunning = false;
+                let hasFailed = false;
+                let step1IsRunning = false;
+
+                latestBatch.steps.forEach(st => {
+                    const stepNum = parseInt(st.step, 10);
+                    if (stepNum >= 0 && stepNum <= 5) {
+                        const dur = st.durasi_detik ? `${st.durasi_detik}s` : '0s';
+                        const timeStr = st.waktu_mulai ? st.waktu_mulai.split(' ')[1] : '';
+                        updateRekeningStepCardUI(stepNum, st.status, `${dur} | ${timeStr}`);
+                        if (stepNum > highestStep) highestStep = stepNum;
+                        if (st.status === 'RUNNING') {
+                            hasRunning = true;
+                            if (stepNum === 1) step1IsRunning = true;
+                        }
+                        if (st.status === 'FAILED') hasFailed = true;
+                    }
+                });
+
+                if (latestBatch.status === 'SUCCESS' && latestBatch.steps.length >= 6) {
+                    updateRekeningProgressUI(5, 'SUCCESS', 'Closing Rekening Terakhir Berhasil Selesai Penuh (6/6 Tahap)', true);
+                    if (pipelineRekeningLiveIndicator) {
+                        pipelineRekeningLiveIndicator.textContent = 'COMPLETED';
+                        pipelineRekeningLiveIndicator.className = 'badge badge-success';
+                    }
+                    if (pipelineRekeningStatusBadge) {
+                        pipelineRekeningStatusBadge.innerHTML = '<i class="ph ph-check-circle"></i> SUKSES PENUH';
+                        pipelineRekeningStatusBadge.className = 'badge badge-success';
+                    }
+                } else if (hasRunning || latestBatch.status === 'RUNNING') {
+                    if (pipelineRekeningLiveIndicator) {
+                        pipelineRekeningLiveIndicator.textContent = 'RUNNING';
+                        pipelineRekeningLiveIndicator.className = 'badge badge-warning';
+                    }
+                    if (pipelineRekeningStatusBadge) {
+                        pipelineRekeningStatusBadge.innerHTML = '<i class="ph ph-spinner spinner"></i> SEDANG BERJALAN...';
+                        pipelineRekeningStatusBadge.className = 'badge badge-warning';
+                    }
+                    updateRekeningProgressUI(highestStep, 'RUNNING', `Sedang Berjalan: ${rekStepNamesDef[highestStep] || 'Tahap ' + highestStep}`);
+                } else if (hasFailed || latestBatch.status === 'FAILED') {
+                    if (pipelineRekeningLiveIndicator) {
+                        pipelineRekeningLiveIndicator.textContent = 'FAILED';
+                        pipelineRekeningLiveIndicator.className = 'badge badge-danger';
+                    }
+                    if (pipelineRekeningStatusBadge) {
+                        pipelineRekeningStatusBadge.innerHTML = '<i class="ph ph-warning"></i> GAGAL';
+                        pipelineRekeningStatusBadge.className = 'badge badge-danger';
+                    }
+                    updateRekeningProgressUI(highestStep, 'FAILED', `Gagal pada ${rekStepNamesDef[highestStep] || 'Tahap ' + highestStep}`);
+                }
+
+                if (step1IsRunning && json.active_backup && json.active_backup.is_writing) {
+                    const ab = json.active_backup;
+                    const cardMeta1 = document.getElementById('rek-step-meta-1');
+                    if (cardMeta1) {
+                        cardMeta1.innerHTML = `<span style="color: #38bdf8; font-weight: 600;"><i class="ph ph-arrows-clockwise spinner"></i> ${ab.display_text}</span>`;
+                    }
+                    const phaseTitle = document.getElementById('pipeline-rekening-progress-phase-title');
+                    if (phaseTitle && highestStep === 1) {
+                        phaseTitle.textContent = `Tahap 1: Pencadangan Database (${ab.display_text})`;
+                    }
+                }
+
+                const queryTicker = document.getElementById('pipeline-rekening-query-ticker');
+                const tableBadge = document.getElementById('pipeline-rekening-active-table-badge');
+                if (tableBadge && json.active_table) {
+                    tableBadge.textContent = `Tabel: ${json.active_table}`;
+                }
+                if (queryTicker) {
+                    if (json.query_snippet) {
+                        queryTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}] ${json.query_snippet}`;
+                    } else if (latestBatch.status === 'SUCCESS') {
+                        queryTicker.textContent = 'Semua operasi SQL 6 tahap closing rekening telah selesai dengan sukses.';
+                        if (tableBadge) tableBadge.textContent = 'Selesai';
+                    }
+                }
+            }
+        } else {
+            pipelineRekeningHistoryTbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 1.5rem;">Belum ada riwayat batch closing rekening.</td></tr>';
+        }
+    } catch (e) {
+        console.error('Gagal memuat log closing rekening:', e);
+    }
+}
+
+async function runClosingRekeningPipeline() {
+    if (!confirm("PERINGATAN:\nAnda akan menjalankan CLOSING REKENING PIPELINE (6 TAHAPAN BERURUTAN):\n\n1. Tahap 0: Set OFFLINE = '0' (Maintenance)\n2. Tahap 1: Backup Database simpadu (CLOSING_REKENING)\n3. Tahap 2: Closing Rekening Air\n4. Tahap 3: Transfer PPOB\n5. Tahap 4: Pelunasan Rumah Ibadah\n6. Tahap 5: Set OFFLINE = '1' (Online)\n\nLanjutkan eksekusi penuh sekarang?")) {
+        return;
+    }
+
+    if (!btnRunRekeningPipeline) return;
+
+    localStorage.removeItem('rekening_view_standby');
+    isManualRekeningReset = false;
+
+    btnRunRekeningPipeline.disabled = true;
+    btnRunRekeningPipeline.classList.add('btn-loading');
+    btnRunRekeningPipeline.innerHTML = '<i class="ph ph-spinner spinner"></i> Sedang Memproses Closing Rekening...';
+
+    if (pipelineRekeningLiveIndicator) {
+        pipelineRekeningLiveIndicator.textContent = 'RUNNING';
+        pipelineRekeningLiveIndicator.className = 'badge badge-warning';
+    }
+    if (pipelineRekeningStatusBadge) {
+        pipelineRekeningStatusBadge.innerHTML = '<i class="ph ph-spinner spinner"></i> MEMPROSES...';
+        pipelineRekeningStatusBadge.className = 'badge badge-warning';
+    }
+
+    resetAllRekeningStepCards();
+    startRekeningStopwatch();
+    updateRekeningStepCardUI(0, 'RUNNING', 'Memulai...');
+    updateRekeningProgressUI(0, 'RUNNING', 'Tahap 0: Set Mode Maintenance (OFFLINE = 0)...');
+    if (pipelineRekeningConsoleOutput) {
+        pipelineRekeningConsoleOutput.textContent = `[${new Date().toLocaleTimeString('id-ID')}] Memulai eksekusi Closing Rekening Pipeline 6-Tahapan...\n`;
+    }
+
+    let poller = setInterval(async () => {
+        try {
+            const res = await fetch('api.php?action=get_rekening_pipeline_logs&limit=5');
+            const json = await res.json();
+            if (json.status === 'success' && json.batches && json.batches.length > 0) {
+                const cur = json.batches[0];
+                if (cur && cur.steps) {
+                    let highest = 0;
+                    cur.steps.forEach(st => {
+                        const stepNum = parseInt(st.step, 10);
+                        if (stepNum >= 0 && stepNum <= 5) {
+                            const dur = st.durasi_detik ? `${st.durasi_detik}s` : '0s';
+                            const timeStr = st.waktu_mulai ? st.waktu_mulai.split(' ')[1] : '';
+                            updateRekeningStepCardUI(stepNum, st.status, `${dur} | ${timeStr}`);
+                            if (stepNum > highest) highest = stepNum;
+                        }
+                    });
+                    const lastStep = cur.steps[cur.steps.length - 1];
+                    if (lastStep) {
+                        updateRekeningProgressUI(parseInt(lastStep.step, 10), lastStep.status, null);
+                    }
+                }
+
+                const queryTicker = document.getElementById('pipeline-rekening-query-ticker');
+                const tableBadge = document.getElementById('pipeline-rekening-active-table-badge');
+                if (tableBadge && json.active_table) {
+                    tableBadge.textContent = `Tabel: ${json.active_table}`;
+                }
+                if (queryTicker && json.query_snippet) {
+                    queryTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}] ${json.query_snippet}`;
+                }
+            }
+        } catch (e) {
+            // silent
+        }
+    }, 1500);
+
+    try {
+        const res = await fetch('api.php?action=run_rekening_pipeline', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                executed_by: 'WEB_DASHBOARD',
+                periode: cfgRekeningPeriode ? cfgRekeningPeriode.value : '',
+                user_id: 1
+            })
+        });
+
+        clearInterval(poller);
+        const json = await res.json();
+
+        if (json.data && json.data.logs && pipelineRekeningConsoleOutput) {
+            pipelineRekeningConsoleOutput.textContent = json.data.logs.join('\n');
+            pipelineRekeningConsoleOutput.scrollTop = pipelineRekeningConsoleOutput.scrollHeight;
+        }
+
+        if (json.status === 'success') {
+            const data = json.data;
+            if (pipelineRekeningBatchIdBadge) pipelineRekeningBatchIdBadge.textContent = `Batch: ${data.batch_id} (${data.periode})`;
+            if (pipelineRekeningLiveIndicator) {
+                pipelineRekeningLiveIndicator.textContent = 'COMPLETED';
+                pipelineRekeningLiveIndicator.className = 'badge badge-success';
+            }
+            if (pipelineRekeningStatusBadge) {
+                pipelineRekeningStatusBadge.innerHTML = '<i class="ph ph-check-circle"></i> SUKSES PENUH';
+                pipelineRekeningStatusBadge.className = 'badge badge-success';
+            }
+
+            for (let i = 0; i <= 5; i++) {
+                if (data.steps && data.steps[i]) {
+                    updateRekeningStepCardUI(i, 'SUCCESS', data.steps[i].pesan || 'Selesai');
+                }
+            }
+
+            stopRekeningStopwatch(`${data.durasi_total_detik}s`);
+            updateRekeningProgressUI(5, 'SUCCESS', `Closing Rekening Selesai Sukses Penuh (${data.durasi_total_detik} detik)`, true);
+
+            showNotification('Sukses', `Closing Rekening 6-Tahap Sukses Penuh!\n\nBatch ID: ${data.batch_id}\nTotal Durasi: ${data.durasi_total_detik} detik`, 'success');
+            loadRekeningPipelineLogs();
+            loadRekeningConfig();
+        } else {
+            clearInterval(poller);
+            if (pipelineRekeningLiveIndicator) {
+                pipelineRekeningLiveIndicator.textContent = 'FAILED';
+                pipelineRekeningLiveIndicator.className = 'badge badge-danger';
+            }
+            if (pipelineRekeningStatusBadge) {
+                pipelineRekeningStatusBadge.innerHTML = '<i class="ph ph-warning"></i> GAGAL';
+                pipelineRekeningStatusBadge.className = 'badge badge-danger';
+            }
+            stopRekeningStopwatch('Gagal');
+            updateRekeningProgressUI(0, 'FAILED', `Closing Rekening Gagal: ${json.message || json.error}`, false);
+            showNotification('Gagal', `Closing Rekening Terhenti!\n\nDetail: ${json.message || json.error}`, 'danger');
+            loadRekeningPipelineLogs();
+        }
+    } catch (err) {
+        clearInterval(poller);
+        stopRekeningStopwatch('Error');
+        updateRekeningProgressUI(0, 'FAILED', 'Terjadi kesalahan jaringan/timeout', false);
+        showNotification('Error', 'Terjadi kesalahan koneksi atau eksekusi: ' + err.message, 'danger');
+        if (pipelineRekeningLiveIndicator) {
+            pipelineRekeningLiveIndicator.textContent = 'ERROR';
+            pipelineRekeningLiveIndicator.className = 'badge badge-danger';
+        }
+    } finally {
+        clearInterval(poller);
+        btnRunRekeningPipeline.disabled = false;
+        btnRunRekeningPipeline.classList.remove('btn-loading');
+        btnRunRekeningPipeline.innerHTML = '<i class="ph ph-play"></i> Jalankan Closing Rekening Sekarang';
+    }
+}
+
+if (btnRunRekeningPipeline) {
+    btnRunRekeningPipeline.addEventListener('click', runClosingRekeningPipeline);
+}
+if (btnRefreshRekeningLogs) {
+    btnRefreshRekeningLogs.addEventListener('click', loadRekeningPipelineLogs);
+}
+if (btnRefreshRekeningConfigs) {
+    btnRefreshRekeningConfigs.addEventListener('click', loadRekeningConfig);
+}
+if (btnPresetRek2Min) {
+    btnPresetRek2Min.addEventListener('click', () => {
+        const now = new Date();
+        now.setMinutes(now.getMinutes() + 2);
+        if (cfgRekeningJadwal) {
+            cfgRekeningJadwal.value = formatDatetimeForInput(now);
+            startRekeningCountdownTimer(cfgRekeningJadwal.value.replace('T', ' ') + ':00', 'PENDING');
+        }
+    });
+}
+if (btnPresetRek1st) {
+    btnPresetRek1st.addEventListener('click', () => {
+        const p = (cfgRekeningPeriode ? cfgRekeningPeriode.value : '').trim();
+        if (cfgRekeningJadwal && p.length === 6) {
+            cfgRekeningJadwal.value = getDefault1stSchedule(p);
+            startRekeningCountdownTimer(cfgRekeningJadwal.value.replace('T', ' ') + ':00', 'PENDING');
+        }
+    });
+}
+if (formRekeningSchedule) {
+    formRekeningSchedule.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const periode = (cfgRekeningPeriode ? cfgRekeningPeriode.value : '').trim();
+        let jadwal = cfgRekeningJadwal ? cfgRekeningJadwal.value : '';
+
+        if (!periode || periode.length !== 6) {
+            alert('Format periode tidak valid! Harus 6 digit YYYYMM (contoh: 202609).');
+            return;
+        }
+
+        if (jadwal) {
+            jadwal = jadwal.replace('T', ' ');
+            if (jadwal.length === 16) jadwal += ':00';
+        }
+
+        const btnSave = document.getElementById('btn-save-rekening-config');
+        if (btnSave) {
+            btnSave.disabled = true;
+            btnSave.innerHTML = '<i class="ph ph-spinner spinner"></i> Menyimpan...';
+        }
+
+        try {
+            const res = await fetch('api.php?action=save_rekening_config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    periode: periode, 
+                    jadwal_eksekusi: jadwal,
+                    user_id: 1 
+                })
+            });
+            const json = await res.json();
+            if (json.status === 'success') {
+                showNotification('Sukses', json.message || 'Jadwal closing rekening berhasil disimpan!', 'success');
+                startRekeningCountdownTimer(jadwal, 'PENDING');
+                loadRekeningConfig();
+            } else {
+                showNotification('Gagal', json.error || json.message || 'Gagal menyimpan konfigurasi', 'danger');
+            }
+        } catch (err) {
+            showNotification('Error', 'Terjadi kesalahan jaringan: ' + err.message, 'danger');
+        } finally {
+            if (btnSave) {
+                btnSave.disabled = false;
+                btnSave.innerHTML = '<i class="ph ph-floppy-disk"></i> Simpan Jadwal Antrean';
+            }
+        }
+    });
+}
+if (btnResetRekeningStepper) {
+    btnResetRekeningStepper.addEventListener('click', async () => {
+        if (!confirm('Apakah Anda yakin ingin me-reset status alur closing rekening ke STANDBY?\n\nTindakan ini akan membatalkan antrean running/pending lama dan mengembalikan status sistem ke normal.')) {
+            return;
+        }
+        btnResetRekeningStepper.disabled = true;
+        btnResetRekeningStepper.innerHTML = '<i class="ph ph-spinner spinner"></i> Mereset...';
+        try {
+            const res = await fetch('api.php?action=reset_rekening_pipeline_status', { method: 'POST' });
+            const json = await res.json();
+            if (json.status === 'success') {
+                localStorage.setItem('rekening_view_standby', '1');
+                isManualRekeningReset = true;
+                resetAllRekeningStepCards();
+                if (pipelineRekeningConsoleOutput) {
+                    pipelineRekeningConsoleOutput.textContent = `[${new Date().toLocaleTimeString('id-ID')}] Status alur eksekusi closing rekening berhasil di-reset ke Standby.\n`;
+                }
+                showNotification('Sukses', json.message || 'Status alur closing rekening berhasil di-reset ke Standby.', 'success');
+                await loadRekeningConfig();
+                await loadRekeningPipelineLogs();
+            } else {
+                showNotification('Gagal', json.message || 'Gagal mereset status alur.', 'danger');
+            }
+        } catch (err) {
+            showNotification('Error', 'Terjadi kesalahan jaringan: ' + err.message, 'danger');
+        } finally {
+            btnResetRekeningStepper.disabled = false;
+            btnResetRekeningStepper.innerHTML = '<i class="ph ph-arrow-counter-clockwise"></i> Reset ke Standby';
+        }
+    });
+}
+
 // Init
 const urlParams = new URLSearchParams(window.location.search);
 const paramTab = urlParams.get('tab');
 const paramDate = urlParams.get('date');
 const autoLoad = urlParams.get('autoload');
 
-if (paramTab && (paramTab === 'beli' || paramTab === 'batal' || paramTab === 'dibeli' || paramTab === 'otomasi' || paramTab === 'pipeline' || paramTab === 'backup')) {
+if (paramTab && (paramTab === 'beli' || paramTab === 'batal' || paramTab === 'dibeli' || paramTab === 'otomasi' || paramTab === 'pipeline' || paramTab === 'closing_rekening' || paramTab === 'backup')) {
     switchTab(paramTab);
 } else {
     switchTab('beli');

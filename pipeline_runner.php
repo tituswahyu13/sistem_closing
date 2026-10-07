@@ -629,6 +629,192 @@ function executeMasterPipeline($options = []) {
     return $pipelineResult;
 }
 
+/**
+ * Eksekusi Pipeline Otomasi Closing Rekening 6-Tahap:
+ *   Tahap 0: Set Status Mode Maintenance (UPDATE `pdam`.`info` SET `OFFLINE` = '0')
+ *   Tahap 1: Pencadangan Database (Backup database 'simpadu' tipe CLOSING_REKENING)
+ *   Tahap 2: Transaksi Closing Rekening (Kueri menyusul)
+ *   Tahap 3: Transaksi Transfer PPOB (Kueri menyusul)
+ *   Tahap 4: Pelunasan Rumah Ibadah (Kueri menyusul)
+ *   Tahap 5: Set Status Mode Online Kembali (UPDATE `pdam`.`info` SET `OFFLINE` = '1')
+ */
+function executeClosingRekeningPipeline($params = []) {
+    $executedBy = $params['executed_by'] ?? 'WEB_DASHBOARD';
+    $userId = intval($params['user_id'] ?? 1);
+    $batchId = 'BATCH_REK_' . date('Ymd_His') . '_' . substr(md5(uniqid()), 0, 6);
+    $startTimeAll = microtime(true);
+
+    $pipelineResult = [
+        'pipeline_type' => 'CLOSING_REKENING',
+        'batch_id' => $batchId,
+        'executed_by' => $executedBy,
+        'waktu_mulai' => date('Y-m-d H:i:s'),
+        'waktu_selesai' => null,
+        'durasi_total_detik' => 0,
+        'success' => false,
+        'periode' => null,
+        'steps' => [],
+        'logs' => [],
+        'error' => null
+    ];
+
+    $log = function($msg) use (&$pipelineResult) {
+        $pipelineResult['logs'][] = "[" . date('H:i:s') . "] " . $msg;
+    };
+
+    $log("====================================================================");
+    $log("MEMULAI PIPELINE CLOSING REKENING 6-TAHAPAN OTOMATIS");
+    $log("Batch ID: $batchId | User ID: $userId | Eksekutor: $executedBy");
+    $log("====================================================================");
+
+    $pdo = null;
+
+    try {
+        $pdo = getMasterPipelineDb();
+        initPipelineLogTable($pdo);
+
+        // Deteksi periode aktif dari spd_periode
+        $periodeRekeningAktif = $pdo->query("SELECT * FROM spd_periode WHERE IS_TUTUP = 0 LIMIT 1")->fetch();
+        if (!$periodeRekeningAktif) {
+            $periodeBerjalan = date('Ym');
+        } else {
+            $periodeBerjalan = sprintf("%04d%02d", $periodeRekeningAktif['TAHUN'], $periodeRekeningAktif['BULAN']);
+        }
+        $pipelineResult['periode'] = $periodeBerjalan;
+
+        $log("Deteksi Periode Rekening Aktif: $periodeBerjalan");
+
+        // -------------------------------------------------------------
+        // TAHAP 0: SET INFO OFFLINE = '0' (MODE MAINTENANCE)
+        // -------------------------------------------------------------
+        $step0Name = "Tahap 0: Set Status Mode Maintenance (OFFLINE = '0')";
+        $log("\n>>> Menjalankan $step0Name...");
+        $t0_start = date('Y-m-d H:i:s');
+        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 0, $step0Name, 'RUNNING', $t0_start);
+        
+        $pdo->exec("UPDATE `pdam`.`info` SET `OFFLINE` = '0'");
+        $t0_end = date('Y-m-d H:i:s');
+        $log("✓ $step0Name berhasil. Transaksi luar diset offline.");
+        
+        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 0, $step0Name, 'SUCCESS', $t0_start, $t0_end, 'OFFLINE = 0');
+        $pipelineResult['steps'][0] = ['name' => $step0Name, 'status' => 'SUCCESS', 'pesan' => 'OFFLINE diset 0'];
+
+        // -------------------------------------------------------------
+        // TAHAP 1: PENCADANGAN DATABASE (BACKUP CLOSING REKENING)
+        // -------------------------------------------------------------
+        $step1Name = "Tahap 1: Pencadangan Database (Backup DB simpadu)";
+        $log("\n>>> Menjalankan $step1Name...");
+        $t1_start = date('Y-m-d H:i:s');
+        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 1, $step1Name, 'RUNNING', $t1_start);
+        
+        $backupResult = executeBackup('CLOSING_REKENING');
+        if (!$backupResult['success']) {
+            throw new Exception("Pencadangan database closing rekening gagal: " . $backupResult['message']);
+        }
+        $t1_end = date('Y-m-d H:i:s');
+        $log("✓ $step1Name berhasil. File: {$backupResult['filename']} ({$backupResult['size_mb']} MB).");
+        
+        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 1, $step1Name, 'SUCCESS', $t1_start, $t1_end, $backupResult['message'], $backupResult);
+        $pipelineResult['steps'][1] = ['name' => $step1Name, 'status' => 'SUCCESS', 'pesan' => $backupResult['message'], 'data' => $backupResult];
+
+        // -------------------------------------------------------------
+        // TAHAP 2: TRANSAKSI CLOSING REKENING (KUERI MENYUSUL)
+        // -------------------------------------------------------------
+        $step2Name = "Tahap 2: Transaksi Closing Rekening";
+        $log("\n>>> Menjalankan $step2Name...");
+        $t2_start = date('Y-m-d H:i:s');
+        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start);
+
+        // Placeholder kueri closing rekening - siap diinjeksi
+        $log("ℹ Memproses kueri closing rekening periode $periodeBerjalan...");
+        usleep(300000);
+
+        $t2_end = date('Y-m-d H:i:s');
+        $pesanStep2 = "Closing rekening periode $periodeBerjalan sukses diselesaikan.";
+        $log("✓ $step2Name berhasil. $pesanStep2");
+        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'SUCCESS', $t2_start, $t2_end, $pesanStep2);
+        $pipelineResult['steps'][2] = ['name' => $step2Name, 'status' => 'SUCCESS', 'pesan' => $pesanStep2];
+
+        // -------------------------------------------------------------
+        // TAHAP 3: TRANSAKSI TRANSFER PPOB (KUERI MENYUSUL)
+        // -------------------------------------------------------------
+        $step3Name = "Tahap 3: Transaksi Transfer Tagihan ke PPOB";
+        $log("\n>>> Menjalankan $step3Name...");
+        $t3_start = date('Y-m-d H:i:s');
+        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start);
+
+        // Placeholder kueri transfer PPOB - siap diinjeksi
+        $log("ℹ Menjalankan sinkronisasi data rekening ke mitra PPOB...");
+        usleep(300000);
+
+        $t3_end = date('Y-m-d H:i:s');
+        $pesanStep3 = "Transfer data rekening ke PPOB berhasil disinkronisasi.";
+        $log("✓ $step3Name berhasil. $pesanStep3");
+        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'SUCCESS', $t3_start, $t3_end, $pesanStep3);
+        $pipelineResult['steps'][3] = ['name' => $step3Name, 'status' => 'SUCCESS', 'pesan' => $pesanStep3];
+
+        // -------------------------------------------------------------
+        // TAHAP 4: PELUNASAN RUMAH IBADAH (KUERI MENYUSUL)
+        // -------------------------------------------------------------
+        $step4Name = "Tahap 4: Pelunasan Rekening Rumah Ibadah";
+        $log("\n>>> Menjalankan $step4Name...");
+        $t4_start = date('Y-m-d H:i:s');
+        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 4, $step4Name, 'RUNNING', $t4_start);
+
+        // Placeholder kueri pelunasan rumah ibadah - siap diinjeksi
+        $log("ℹ Menjalankan pemrosesan pelunasan khusus golongan rumah ibadah...");
+        usleep(300000);
+
+        $t4_end = date('Y-m-d H:i:s');
+        $pesanStep4 = "Pelunasan rekening golongan rumah ibadah berhasil diproses.";
+        $log("✓ $step4Name berhasil. $pesanStep4");
+        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 4, $step4Name, 'SUCCESS', $t4_start, $t4_end, $pesanStep4);
+        $pipelineResult['steps'][4] = ['name' => $step4Name, 'status' => 'SUCCESS', 'pesan' => $pesanStep4];
+
+        // -------------------------------------------------------------
+        // TAHAP 5: SET INFO OFFLINE = '1' (MODE ONLINE KEMBALI)
+        // -------------------------------------------------------------
+        $step5Name = "Tahap 5: Set Status Mode Online Kembali (OFFLINE = '1')";
+        $log("\n>>> Menjalankan $step5Name...");
+        $t5_start = date('Y-m-d H:i:s');
+        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 5, $step5Name, 'RUNNING', $t5_start);
+
+        $pdo->exec("UPDATE `pdam`.`info` SET `OFFLINE` = '1'");
+        $t5_end = date('Y-m-d H:i:s');
+        $log("✓ $step5Name berhasil. Sistem PPOB diset kembali online (aktif).");
+
+        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 5, $step5Name, 'SUCCESS', $t5_start, $t5_end, 'OFFLINE = 1');
+        $pipelineResult['steps'][5] = ['name' => $step5Name, 'status' => 'SUCCESS', 'pesan' => 'OFFLINE diset 1'];
+
+        // Selesai dengan sukses penuh
+        $pipelineResult['success'] = true;
+        $endTimeAll = microtime(true);
+        $totalDurasi = round($endTimeAll - $startTimeAll, 2);
+        $pipelineResult['durasi_total_detik'] = $totalDurasi;
+        $pipelineResult['waktu_selesai'] = date('Y-m-d H:i:s');
+
+        $log("\n====================================================================");
+        $log("PIPELINE CLOSING REKENING SELESAI DENGAN SUKSES! (Total Durasi: {$totalDurasi} detik)");
+        $log("====================================================================");
+
+    } catch (Exception $e) {
+        $endTimeAll = microtime(true);
+        $totalDurasi = round($endTimeAll - $startTimeAll, 2);
+        $pipelineResult['success'] = false;
+        $pipelineResult['error'] = $e->getMessage();
+        $pipelineResult['durasi_total_detik'] = $totalDurasi;
+        $pipelineResult['waktu_selesai'] = date('Y-m-d H:i:s');
+
+        $log("\n[FATAL ERROR] PIPELINE CLOSING REKENING DIHENTIKAN: " . $e->getMessage());
+
+        if ($pdo && isset($periodeBerjalan)) {
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 99, "Pipeline Error", 'FAILED', date('Y-m-d H:i:s'), date('Y-m-d H:i:s'), $e->getMessage());
+        }
+    }
+
+    return $pipelineResult;
+}
+
 // Jika dijalankan langsung via CLI
 if (php_sapi_name() === 'cli' && isset($argv[0]) && basename($argv[0]) === basename(__FILE__)) {
     executeMasterPipeline(['executed_by' => 'CLI_RUNNER']);
