@@ -1430,6 +1430,40 @@ if ($action === 'beli' || $action === 'batal') {
         http_response_code(500);
         echo json_encode(["status" => "error", "message" => $e->getMessage()]);
     }
+} elseif ($action === 'resume_rekening_pipeline') {
+    try {
+        require_once __DIR__ . '/pipeline_runner.php';
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $userId = intval($input['user_id'] ?? 1);
+        $executedBy = $input['executed_by'] ?? 'WEB_RESUME';
+        $resumeStep = intval($input['resume_step'] ?? 3);
+        $periode = $input['periode'] ?? '202608';
+
+        $result = executeClosingRekeningPipeline([
+            'executed_by' => $executedBy,
+            'user_id' => $userId,
+            'resume_step' => $resumeStep,
+            'periode' => $periode
+        ]);
+
+        if ($result['success']) {
+            echo json_encode([
+                "status" => "success",
+                "message" => "Resume Pipeline Closing Rekening berhasil dieksekusi!",
+                "data" => $result
+            ]);
+        } else {
+            http_response_code(500);
+            echo json_encode([
+                "status" => "error",
+                "message" => "Resume Pipeline Closing Rekening gagal: " . ($result['error'] ?? 'Unknown error'),
+                "data" => $result
+            ]);
+        }
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
 } elseif ($action === 'get_rekening_pipeline_logs') {
     try {
         require_once __DIR__ . '/pipeline_runner.php';

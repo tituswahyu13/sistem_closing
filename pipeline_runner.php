@@ -701,73 +701,60 @@ function executeClosingRekeningPipeline($params = []) {
         $pdo = getMasterPipelineDb();
         initPipelineLogTable($pdo);
 
+        $resumeStep = intval($params['resume_step'] ?? 0);
+        $overridePeriode = !empty($params['periode']) ? strval($params['periode']) : null;
+
         // Deteksi periode aktif dari spd_periode
-        $periodeRekeningAktif = $pdo->query("SELECT * FROM spd_periode WHERE IS_TUTUP = 0 LIMIT 1")->fetch();
-        if (!$periodeRekeningAktif) {
-            $periodeBerjalan = date('Ym');
+        if ($overridePeriode) {
+            $periodeBerjalan = $overridePeriode;
         } else {
-            $periodeBerjalan = sprintf("%04d%02d", $periodeRekeningAktif['TAHUN'], $periodeRekeningAktif['BULAN']);
+            $periodeRekeningAktif = $pdo->query("SELECT * FROM spd_periode WHERE IS_TUTUP = 0 LIMIT 1")->fetch();
+            if (!$periodeRekeningAktif) {
+                $periodeBerjalan = date('Ym');
+            } else {
+                $periodeBerjalan = sprintf("%04d%02d", $periodeRekeningAktif['TAHUN'], $periodeRekeningAktif['BULAN']);
+            }
         }
         $pipelineResult['periode'] = $periodeBerjalan;
 
-        $log("Deteksi Periode Rekening Aktif: $periodeBerjalan");
+        $log("Deteksi Periode Rekening Target: $periodeBerjalan (Resume Step: $resumeStep)");
 
         // -------------------------------------------------------------
         // TAHAP 0: SET INFO OFFLINE = '0' (MODE MAINTENANCE)
         // -------------------------------------------------------------
-        $step0Name = "Tahap 0: Set Status Mode Maintenance (OFFLINE = '0')";
-        $log("\n>>> Menjalankan $step0Name...");
-        $t0_start = date('Y-m-d H:i:s');
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 0, $step0Name, 'RUNNING', $t0_start);
-        
-        $pdo->exec("UPDATE `pdam`.`info` SET `OFFLINE` = '0'");
-        $t0_end = date('Y-m-d H:i:s');
-        $log("✓ $step0Name berhasil. Transaksi luar diset offline.");
-        
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 0, $step0Name, 'SUCCESS', $t0_start, $t0_end, 'OFFLINE = 0');
-        $pipelineResult['steps'][0] = ['name' => $step0Name, 'status' => 'SUCCESS', 'pesan' => 'OFFLINE diset 0'];
+        if ($resumeStep <= 0) {
+            $step0Name = "Tahap 0: Set Status Mode Maintenance (OFFLINE = '0')";
+            $log("\n>>> Menjalankan $step0Name...");
+            $t0_start = date('Y-m-d H:i:s');
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 0, $step0Name, 'RUNNING', $t0_start);
+            
+            $pdo->exec("UPDATE `pdam`.`info` SET `OFFLINE` = '0'");
+            $t0_end = date('Y-m-d H:i:s');
+            $log("✓ $step0Name berhasil. Transaksi luar diset offline.");
+            
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 0, $step0Name, 'SUCCESS', $t0_start, $t0_end, 'OFFLINE = 0');
+            $pipelineResult['steps'][0] = ['name' => $step0Name, 'status' => 'SUCCESS', 'pesan' => 'OFFLINE diset 0'];
+        }
 
         // -------------------------------------------------------------
         // TAHAP 1: PENCADANGAN DATABASE (BACKUP CLOSING REKENING)
         // -------------------------------------------------------------
-        $step1Name = "Tahap 1: Pencadangan Database (Backup DB simpadu)";
-        $log("\n>>> Menjalankan $step1Name...");
-        $t1_start = date('Y-m-d H:i:s');
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 1, $step1Name, 'RUNNING', $t1_start);
-        
-        $backupResult = executeBackup('CLOSING_REKENING');
-        if (!$backupResult['success']) {
-            throw new Exception("Pencadangan database closing rekening gagal: " . $backupResult['message']);
+        if ($resumeStep <= 1) {
+            $step1Name = "Tahap 1: Pencadangan Database (Backup DB simpadu)";
+            $log("\n>>> Menjalankan $step1Name...");
+            $t1_start = date('Y-m-d H:i:s');
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 1, $step1Name, 'RUNNING', $t1_start);
+            
+            $backupResult = executeBackup('CLOSING_REKENING');
+            if (!$backupResult['success']) {
+                throw new Exception("Pencadangan database closing rekening gagal: " . $backupResult['message']);
+            }
+            $t1_end = date('Y-m-d H:i:s');
+            $log("✓ $step1Name berhasil. File: {$backupResult['filename']} ({$backupResult['size_mb']} MB).");
+            
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 1, $step1Name, 'SUCCESS', $t1_start, $t1_end, $backupResult['message'], $backupResult);
+            $pipelineResult['steps'][1] = ['name' => $step1Name, 'status' => 'SUCCESS', 'pesan' => $backupResult['message'], 'data' => $backupResult];
         }
-        $t1_end = date('Y-m-d H:i:s');
-        $log("✓ $step1Name berhasil. File: {$backupResult['filename']} ({$backupResult['size_mb']} MB).");
-        
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 1, $step1Name, 'SUCCESS', $t1_start, $t1_end, $backupResult['message'], $backupResult);
-        $pipelineResult['steps'][1] = ['name' => $step1Name, 'status' => 'SUCCESS', 'pesan' => $backupResult['message'], 'data' => $backupResult];
-
-        // -------------------------------------------------------------
-        // TAHAP 2: TRANSAKSI CLOSING REKENING (TUTUP REKENING)
-        // -------------------------------------------------------------
-        $step2Name = "Tahap 2: Transaksi Closing Rekening";
-        $log("\n>>> Menjalankan $step2Name...");
-        $t2_start = date('Y-m-d H:i:s');
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start);
-
-        // 1. Cek apakah masih ada rekening yang belum dikontrol (IS_CTRL = 0)
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Sedang validasi kontrol meter (IS_CTRL = 0)...');
-        $stmtCtrl = $pdo->prepare("
-            SELECT COUNT(*) AS jumlah 
-            FROM spd_rekening
-            WHERE PERIODE = :periode AND STATUS IN ('A','T') AND IS_CTRL = 0
-        ");
-        $stmtCtrl->execute(['periode' => $periodeBerjalan]);
-        $resCtrl = $stmtCtrl->fetch(PDO::FETCH_ASSOC);
-        $jmlBelumCtrl = (int)($resCtrl['jumlah'] ?? 0);
-
-        if ($jmlBelumCtrl > 0) {
-            throw new Exception("Tutup rekening dibatalkan. Masih terdapat {$jmlBelumCtrl} rekening yang belum dikontrol (IS_CTRL = 0) pada periode {$periodeBerjalan}.");
-        }
-        $log("   - Validasi kontrol meter: Semua rekening periode $periodeBerjalan sudah dikontrol (IS_CTRL = 1).");
 
         // 2. Hitung Periode Baru & Periode Lalu
         $curTahun = substr($periodeBerjalan, 0, 4);
@@ -787,14 +774,39 @@ function executeClosingRekeningPipeline($params = []) {
         $dtPrev2->modify('-2 month');
         $prevPeriode2 = $dtPrev2->format('Ym');
 
-        $log("   - Periode Aktif Berjalan: $periodeBerjalan ({$curBulan}-{$curTahun})");
-        $log("   - Periode Baru Dibuat: $nextPeriode ({$nextBulan}-{$nextTahun})");
+        // -------------------------------------------------------------
+        // TAHAP 2: TRANSAKSI CLOSING REKENING (TUTUP REKENING)
+        // -------------------------------------------------------------
+        if ($resumeStep <= 2) {
+            $step2Name = "Tahap 2: Transaksi Closing Rekening";
+            $log("\n>>> Menjalankan $step2Name...");
+            $t2_start = date('Y-m-d H:i:s');
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start);
 
-        // Memulai Transaksi Database
-        $pdo->beginTransaction();
+            // 1. Cek apakah masih ada rekening yang belum dikontrol (IS_CTRL = 0)
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Sedang validasi kontrol meter (IS_CTRL = 0)...');
+            $stmtCtrl = $pdo->prepare("
+                SELECT COUNT(*) AS jumlah 
+                FROM spd_rekening
+                WHERE PERIODE = :periode AND STATUS IN ('A','T') AND IS_CTRL = 0
+            ");
+            $stmtCtrl->execute(['periode' => $periodeBerjalan]);
+            $resCtrl = $stmtCtrl->fetch(PDO::FETCH_ASSOC);
+            $jmlBelumCtrl = (int)($resCtrl['jumlah'] ?? 0);
 
-        try {
-            // A. Update SPD_ANGSURAN
+            if ($jmlBelumCtrl > 0) {
+                throw new Exception("Tutup rekening dibatalkan. Masih terdapat {$jmlBelumCtrl} rekening yang belum dikontrol (IS_CTRL = 0) pada periode {$periodeBerjalan}.");
+            }
+            $log("   - Validasi kontrol meter: Semua rekening periode $periodeBerjalan sudah dikontrol (IS_CTRL = 1).");
+
+            $log("   - Periode Aktif Berjalan: $periodeBerjalan ({$curBulan}-{$curTahun})");
+            $log("   - Periode Baru Dibuat: $nextPeriode ({$nextBulan}-{$nextTahun})");
+
+            // Memulai Transaksi Database
+            $pdo->beginTransaction();
+
+            try {
+                // A. Update SPD_ANGSURAN
             recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Mengeksekusi [Query 1/6]: UPDATE spd_angsuran (XRLANG & AKUMBAYAR)...');
             $sqlAngsuran = "
                 UPDATE spd_angsuran a, (
@@ -1091,6 +1103,7 @@ function executeClosingRekeningPipeline($params = []) {
             }
             throw new Exception("Gagal pada $step2Name: " . $e->getMessage());
         }
+        } // End if resumeStep <= 2
 
         // -------------------------------------------------------------
         // TAHAP 3: TRANSAKSI TRANSFER PPOB & HANKAM
