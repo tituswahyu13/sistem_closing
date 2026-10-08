@@ -1635,6 +1635,72 @@ if ($action === 'beli' || $action === 'batal') {
         http_response_code(500);
         echo json_encode(["error" => $e->getMessage()]);
     }
+} elseif ($action === 'check_rumah_ibadah_status') {
+    try {
+        // Cek pdam.ppob
+        $stmtPpob = $pdo->query("
+            SELECT FLAG, COUNT(*) as jml, SUM(TOTTAG) as total_tagihan
+            FROM `pdam`.`ppob` 
+            WHERE GOL LIKE '%(IB%' OR GOL LIKE '%(IB1%' OR GOL LIKE '%(IB2%' OR GOL LIKE '%(IB3%' OR IDLGN = '12010151'
+            GROUP BY FLAG
+        ");
+        $ppobStats = $stmtPpob ? $stmtPpob->fetchAll(PDO::FETCH_ASSOC) : [];
+
+        // Sample ppob
+        $stmtSamplePpob = $pdo->query("
+            SELECT IDLGN, NAMA, GOL, BLNTAG, FLAG, TGL_LUNAS, TIME_LUNAS, TOTTAG
+            FROM `pdam`.`ppob`
+            WHERE GOL LIKE '%(IB%' OR IDLGN = '12010151'
+            LIMIT 5
+        ");
+        $samplePpob = $stmtSamplePpob ? $stmtSamplePpob->fetchAll(PDO::FETCH_ASSOC) : [];
+
+        // Cek spd_rekening
+        $stmtRek = $pdo->query("
+            SELECT a.PERIODE, a.STATUS, a.FLAG, COUNT(*) as jml, SUM(a.RK + a.NON_AIR + a.MATERAI) as total_tagihan
+            FROM spd_rekening a
+            JOIN spd_stgol b ON b.ID = a.STGOL_ID
+            WHERE b.ID IN ('IB1', 'IB2', 'IB3') OR a.NO_PDAM = '12010151'
+            GROUP BY a.PERIODE, a.STATUS, a.FLAG
+            ORDER BY a.PERIODE DESC
+            LIMIT 10
+        ");
+        $rekStats = $stmtRek ? $stmtRek->fetchAll(PDO::FETCH_ASSOC) : [];
+
+        // Sample spd_rekening periode 202608 & 202609
+        $stmtSampleRek = $pdo->query("
+            SELECT a.PERIODE, a.NO_PDAM, b.NAMA, a.STGOL_ID, a.STATUS, a.FLAG, (a.RK + a.NON_AIR + a.MATERAI) as total
+            FROM spd_rekening a
+            JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+            WHERE a.STGOL_ID IN ('IB1', 'IB2', 'IB3') OR a.NO_PDAM = '12010151'
+            ORDER BY a.PERIODE DESC, a.NO_PDAM ASC
+            LIMIT 10
+        ");
+        $sampleRek = $stmtSampleRek ? $stmtSampleRek->fetchAll(PDO::FETCH_ASSOC) : [];
+
+        // Cek apakah ada spd_tagrek untuk Rumah Ibadah
+        $stmtTagrek = $pdo->query("
+            SELECT a.REKENING_BULAN, a.ONLINE, COUNT(*) as jml, SUM(a.JUMLAH) as total
+            FROM spd_tagrek a
+            WHERE a.STGOL_ID IN ('IB1', 'IB2', 'IB3') OR a.NO_PDAM = '12010151'
+            GROUP BY a.REKENING_BULAN, a.ONLINE
+            ORDER BY a.REKENING_BULAN DESC
+            LIMIT 10
+        ");
+        $tagrekStats = $stmtTagrek ? $stmtTagrek->fetchAll(PDO::FETCH_ASSOC) : [];
+
+        echo json_encode([
+            "status" => "success",
+            "ppob_stats" => $ppobStats,
+            "sample_ppob" => $samplePpob,
+            "rekening_stats" => $rekStats,
+            "sample_rekening" => $sampleRek,
+            "tagrek_stats" => $tagrekStats
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
 } elseif ($action === 'save_rekening_config') {
     try {
         $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
