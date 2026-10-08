@@ -55,6 +55,8 @@ function initPipelineLogTable($pdo) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     ";
     $pdo->exec($sql);
+}
+
 function getDbTablesMap($pdo) {
     static $map = null;
     if ($map === null) {
