@@ -1100,6 +1100,11 @@ function executeClosingRekeningPipeline($params = []) {
         $t3_start = date('Y-m-d H:i:s');
         recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start);
 
+        // Pastikan sql_mode relaxed agar tidak gagal jika ada data string lama yang melebihi batas kolom tabel pdam legacy
+        try {
+            $pdo->exec("SET SESSION sql_mode = ''");
+        } catch (Exception $e) {}
+
         $pdo->beginTransaction();
 
         try {
@@ -1112,7 +1117,7 @@ function executeClosingRekeningPipeline($params = []) {
             recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start, null, 'Mengeksekusi [Query 2/4]: INSERT INTO pdam.ppob (Tagihan Rekening Aktif ' . $periodeBerjalan . ')...');
             $sqlPpobTagihan = "
                 INSERT INTO `pdam`.ppob
-                SELECT a.NO_PDAM, b.NAMA, b.ALAMAT, concat(c.KETERANGAN, ' (', a.STGOL_ID, ')') AS GOL,
+                SELECT a.NO_PDAM, LEFT(b.NAMA, 30) AS NAMA, LEFT(b.ALAMAT, 50) AS ALAMAT, LEFT(concat(c.KETERANGAN, ' (', a.STGOL_ID, ')'), 40) AS GOL,
                 IF(a.EDITMETER = 0, a.METER, a.EDITMETER) AS MTRINI, a.METERLALU, a.VOLUME_TAGIHAN AS PAKAI, (a.RK + a.MATERAI) AS TAGAIR, a.NON_AIR AS TAGNONAIR,
                 IFNULL(concat('(', d.XANGSUR, '/', d.XRLANG, ')'), 0) AS ANGS_KE, 0 AS DENDA, a.SUBSIDI AS SUBSIDI, (a.RK + a.NON_AIR + a.MATERAI - a.SUBSIDI) AS TOTTAG, 
                 :blntag AS BLNTAG, 
@@ -1143,8 +1148,8 @@ function executeClosingRekeningPipeline($params = []) {
             recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start, null, 'Mengeksekusi [Query 3/4]: INSERT INTO pdam.ppob (Tunggakan Rekening)...');
             $sqlPpobTunggakan = "
                 INSERT INTO `pdam`.ppob
-                SELECT a.NO_PDAM, b.NAMA, b.ALAMAT,
-                concat(c.KETERANGAN, ' (', a.STGOL_ID, ')') AS GOL,
+                SELECT a.NO_PDAM, LEFT(b.NAMA, 30) AS NAMA, LEFT(b.ALAMAT, 50) AS ALAMAT,
+                LEFT(concat(c.KETERANGAN, ' (', a.STGOL_ID, ')'), 40) AS GOL,
                 ifnull(d.MTRINI, 0) AS MTRINI, ifnull(d.METERLALU, 0) AS METERLALU, ifnull(d.PAKAI, 0) AS PAKAI,
                 (a.AIR + a.MATERAI) AS TAGAIR, a.NON_AIR AS TAGNONAIR,
                 ifnull(concat('(', e.XANGSUR, '/', e.XRLANG, ')'), '') AS ANGS_KE, a.DENDA AS DENDA, a.SUBSIDI AS SUBSIDI, (a.JUMLAH - a.SUBSIDI) AS TOTTAG,
@@ -1191,7 +1196,7 @@ function executeClosingRekeningPipeline($params = []) {
                     STAN_LALU, STAN_KINI, STAN_ANGKAT, PAKAI, TAGIHAN, ADMINISTRASI, PEMELIHARAAN,
                     MATERAI, ANGSURAN, TOTAL_TAGIHAN 
                 ) SELECT
-                    d.LOKASI, e.KETERANGAN, b.NO_PDAM, b.NAMA, b.ALAMAT, b.STGOL_ID, g.KETERANGAN, c.PERIODE,
+                    d.LOKASI, e.KETERANGAN, b.NO_PDAM, LEFT(b.NAMA, 40), LEFT(b.ALAMAT, 50), b.STGOL_ID, g.KETERANGAN, c.PERIODE,
                     c.METERLALU, c.METER, c.EDITMETER, c.VOLUME_TAGIHAN, c.AIR, c.ADMINISTRASI, c.PEMELIHARAAN,
                     c.MATERAI, c.NON_AIR, ( c.AIR + c.ADMINISTRASI + c.PEMELIHARAAN + c.MATERAI + c.NON_AIR ) 
                 FROM spd_rekening c
@@ -1213,7 +1218,7 @@ function executeClosingRekeningPipeline($params = []) {
                     STAN_LALU, STAN_KINI, STAN_ANGKAT, PAKAI, TAGIHAN, ADMINISTRASI, PEMELIHARAAN,
                     MATERAI, ANGSURAN, TOTAL_TAGIHAN 
                 ) SELECT
-                    d.LOKASI, 'AKMIL', b.NO_PDAM, b.NAMA, b.ALAMAT, b.STGOL_ID, g.KETERANGAN, c.PERIODE,
+                    d.LOKASI, 'AKMIL', b.NO_PDAM, LEFT(b.NAMA, 40), LEFT(b.ALAMAT, 50), b.STGOL_ID, g.KETERANGAN, c.PERIODE,
                     c.METERLALU, c.METER, c.EDITMETER, c.VOLUME_TAGIHAN, c.AIR, c.ADMINISTRASI, c.PEMELIHARAAN,
                     c.MATERAI, c.NON_AIR, ( c.AIR + c.ADMINISTRASI + c.PEMELIHARAAN + c.MATERAI + c.NON_AIR ) 
                 FROM spd_rekening c
@@ -1233,7 +1238,7 @@ function executeClosingRekeningPipeline($params = []) {
                     STAN_LALU, STAN_KINI, STAN_ANGKAT, PAKAI, TAGIHAN, ADMINISTRASI, PEMELIHARAAN,
                     MATERAI, ANGSURAN, TOTAL_TAGIHAN 
                 ) SELECT
-                    d.LOKASI, e.KETERANGAN, b.NO_PDAM, b.NAMA, b.ALAMAT, b.STGOL_ID, g.KETERANGAN, c.PERIODE,
+                    d.LOKASI, e.KETERANGAN, b.NO_PDAM, LEFT(b.NAMA, 40), LEFT(b.ALAMAT, 50), b.STGOL_ID, g.KETERANGAN, c.PERIODE,
                     c.METERLALU, c.METER, c.EDITMETER, c.VOLUME_TAGIHAN, c.AIR, c.ADMINISTRASI, c.PEMELIHARAAN,
                     c.MATERAI, c.NON_AIR, ( c.AIR + c.ADMINISTRASI + c.PEMELIHARAAN + c.MATERAI + c.NON_AIR ) 
                 FROM spd_rekening c
