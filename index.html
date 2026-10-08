@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=72">
+    <link rel="stylesheet" href="styles.css?v=73">
 </head>
 <body>
     <div class="app-container">
@@ -1245,65 +1245,83 @@
                         </div>
                     </div>
 
-                    <!-- 4 KPI Summary Cards -->
-                    <div class="stats-grid mt-4">
-                        <!-- KPI 1: Rekening Belum Kontrol -->
-                        <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-uncontrolled">
-                            <div class="stat-icon-wrapper warning" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">
-                                <i class="ph ph-gauge"></i>
+                    <!-- Grouped KPI Summary Cards -->
+                    <div class="audit-kpi-groups mt-4">
+                        <!-- Group 1: Validasi Tutup Tagihan (Tagrek & Tunggak) -->
+                        <div class="audit-kpi-group">
+                            <div class="audit-group-header">
+                                <span class="badge badge-info"><i class="ph ph-receipt"></i> Cek Tutup Tagihan</span>
+                                <span style="font-size: 0.72rem; color: var(--text-secondary);">Tagrek & Tunggak</span>
                             </div>
-                            <div class="stat-content">
-                                <span class="stat-label">Rekening Belum Kontrol</span>
-                                <h3 class="stat-value" id="audit-stat-uncontrolled" style="color: #fbbf24;">0</h3>
-                                <span class="stat-sub" id="audit-sub-uncontrolled">Target: spd_rekening (IS_CTRL=0)</span>
+                            <div class="audit-group-cards-2">
+                                <!-- KPI: Duplikat Tagrek -->
+                                <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-tagrek">
+                                    <div class="stat-icon-wrapper purple" style="background: rgba(139, 92, 246, 0.15); color: #c084fc;">
+                                        <i class="ph ph-files"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <span class="stat-label">Duplikat Tagrek</span>
+                                        <h3 class="stat-value" id="audit-stat-tagrek-dup" style="color: #c084fc;">0</h3>
+                                        <span class="stat-sub" id="audit-sub-tagrek">Target: spd_tagrek</span>
+                                    </div>
+                                </div>
+
+                                <!-- KPI: Duplikat Tunggak & Silang -->
+                                <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-tunggak">
+                                    <div class="stat-icon-wrapper danger" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">
+                                        <i class="ph ph-warning-octagon"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <span class="stat-label">Tunggak & Silang</span>
+                                        <h3 class="stat-value" id="audit-stat-tunggak-dup" style="color: #f87171;">0</h3>
+                                        <span class="stat-sub" id="audit-sub-tunggak">Target: spd_tunggak</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- KPI 2: Duplikat Tagrek -->
-                        <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-tagrek">
-                            <div class="stat-icon-wrapper purple" style="background: rgba(139, 92, 246, 0.15); color: #c084fc;">
-                                <i class="ph ph-files"></i>
+                        <!-- Group 2: Validasi Tutup Rekening (Angsuran & Kontrol Meter) -->
+                        <div class="audit-kpi-group">
+                            <div class="audit-group-header">
+                                <span class="badge badge-purple"><i class="ph ph-gauge"></i> Cek Tutup Rekening</span>
+                                <span style="font-size: 0.72rem; color: var(--text-secondary);">Angsuran & Kontrol Meter</span>
                             </div>
-                            <div class="stat-content">
-                                <span class="stat-label">Duplikat Tagrek (Tagihan)</span>
-                                <h3 class="stat-value" id="audit-stat-tagrek-dup" style="color: #c084fc;">0</h3>
-                                <span class="stat-sub" id="audit-sub-tagrek">Target: spd_tagrek</span>
-                            </div>
-                        </div>
+                            <div class="audit-group-cards-3">
+                                <!-- KPI: Rekening Belum Kontrol -->
+                                <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-uncontrolled">
+                                    <div class="stat-icon-wrapper warning" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">
+                                        <i class="ph ph-gauge"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <span class="stat-label">Belum Kontrol</span>
+                                        <h3 class="stat-value" id="audit-stat-uncontrolled" style="color: #fbbf24;">0</h3>
+                                        <span class="stat-sub" id="audit-sub-uncontrolled">IS_CTRL = 0</span>
+                                    </div>
+                                </div>
 
-                        <!-- KPI 3: Duplikat Tunggak & Silang -->
-                        <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-tunggak">
-                            <div class="stat-icon-wrapper danger" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">
-                                <i class="ph ph-warning-octagon"></i>
-                            </div>
-                            <div class="stat-content">
-                                <span class="stat-label">Tunggak & Silang Duplikat</span>
-                                <h3 class="stat-value" id="audit-stat-tunggak-dup" style="color: #f87171;">0</h3>
-                                <span class="stat-sub" id="audit-sub-tunggak">Target: spd_tunggak & Silang</span>
-                            </div>
-                        </div>
+                                <!-- KPI: Duplikat Angsuran -->
+                                <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-angsuran">
+                                    <div class="stat-icon-wrapper info" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">
+                                        <i class="ph ph-money"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <span class="stat-label">Duplikat Angsuran</span>
+                                        <h3 class="stat-value" id="audit-stat-angsuran-dup" style="color: #38bdf8;">0</h3>
+                                        <span class="stat-sub" id="audit-sub-angsuran">spd_angsuran & rekang</span>
+                                    </div>
+                                </div>
 
-                        <!-- KPI 4: Duplikat Angsuran -->
-                        <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-angsuran">
-                            <div class="stat-icon-wrapper info" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">
-                                <i class="ph ph-money"></i>
-                            </div>
-                            <div class="stat-content">
-                                <span class="stat-label">Duplikat Angsuran</span>
-                                <h3 class="stat-value" id="audit-stat-angsuran-dup" style="color: #38bdf8;">0</h3>
-                                <span class="stat-sub" id="audit-sub-angsuran">Target: spd_angsuran & rekang</span>
-                            </div>
-                        </div>
-
-                        <!-- KPI 5: Anomali Angsuran Admin -->
-                        <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-anomali-admin">
-                            <div class="stat-icon-wrapper danger" style="background: rgba(244, 63, 94, 0.15); color: #fb7185;">
-                                <i class="ph ph-file-x"></i>
-                            </div>
-                            <div class="stat-content">
-                                <span class="stat-label">Anomali Angsuran Admin</span>
-                                <h3 class="stat-value" id="audit-stat-anomali-admin" style="color: #fb7185;">0</h3>
-                                <span class="stat-sub" id="audit-sub-anomali-admin">Target: spd_angsuran (admin)</span>
+                                <!-- KPI: Anomali Angsuran Admin -->
+                                <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-anomali-admin">
+                                    <div class="stat-icon-wrapper danger" style="background: rgba(244, 63, 94, 0.15); color: #fb7185;">
+                                        <i class="ph ph-file-x"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <span class="stat-label">Anomali Admin</span>
+                                        <h3 class="stat-value" id="audit-stat-anomali-admin" style="color: #fb7185;">0</h3>
+                                        <span class="stat-sub" id="audit-sub-anomali-admin">spd_angsuran (admin)</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2454,7 +2472,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=72"></script>
+    <script src="app.js?v=73"></script>
 </body>
 </html>
 

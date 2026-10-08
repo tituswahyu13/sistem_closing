@@ -2843,6 +2843,68 @@ tr.row-outside-kuota:hover {
     display: flex;
 }
 
+/* Audit KPI Card Groups */
+.audit-kpi-groups {
+    display: grid;
+    grid-template-columns: 2fr 3fr;
+    gap: 1.25rem;
+    align-items: stretch;
+}
+
+@media (max-width: 1200px) {
+    .audit-kpi-groups {
+        grid-template-columns: 1fr;
+    }
+}
+
+.audit-kpi-group {
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 0.85rem 1rem 1rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.audit-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.audit-group-header .badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 0.35rem 0.65rem;
+    border-radius: 6px;
+}
+
+.audit-group-cards-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+    height: 100%;
+}
+
+.audit-group-cards-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    height: 100%;
+}
+
+@media (max-width: 680px) {
+    .audit-group-cards-2,
+    .audit-group-cards-3 {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Audit KPI Card Active State */
 .stat-card.active-audit-card {
     border-color: rgba(56, 189, 248, 0.6) !important;
