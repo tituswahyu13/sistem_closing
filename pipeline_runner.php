@@ -811,9 +811,9 @@ function executeClosingRekeningPipeline($params = []) {
             $stmtAngsur = $pdo->prepare($sqlAngsuran);
             $stmtAngsur->execute(['next_periode' => $nextPeriode]);
             $jmlAngsurUpdated = $stmtAngsur->rowCount();
-            $log("   - Update SPD_ANGSURAN: $jmlAngsurUpdated baris diperbarui.");
+            $log("   - Update spd_angsuran: $jmlAngsurUpdated baris diperbarui.");
 
-            // B. Generate & Insert Rekening Periode Baru (SPD_REKENING)
+            // B. Generate & Insert Rekening Periode Baru (spd_rekening)
             // Hapus data periode baru jika sebelumnya pernah terbuat sebagian untuk idempotensi
             $pdo->prepare("DELETE FROM spd_rekening WHERE PERIODE = :next_periode")->execute(['next_periode' => $nextPeriode]);
 
@@ -863,9 +863,9 @@ function executeClosingRekeningPipeline($params = []) {
                 'next_periode_angsur' => $nextPeriode
             ]);
             $jmlRekeningBaru = $stmtInsertRek->rowCount();
-            $log("   - Generate SPD_REKENING Periode Baru ($nextPeriode): $jmlRekeningBaru rekening berhasil digenerate.");
+            $log("   - Generate spd_rekening Periode Baru ($nextPeriode): $jmlRekeningBaru rekening berhasil digenerate.");
 
-            // C. Update Status Periode Lama (IS_TUTUP = 1) dan Tambah Periode Baru di SPD_PERIODE
+            // C. Update Status Periode Lama (IS_TUTUP = 1) dan Tambah Periode Baru di spd_periode
             $stmtTutupPeriode = $pdo->prepare("
                 UPDATE spd_periode 
                 SET IS_TUTUP = 1, TIME_TUTUP = NOW() 
@@ -889,7 +889,7 @@ function executeClosingRekeningPipeline($params = []) {
                 $pdo->prepare("UPDATE spd_periode SET IS_TUTUP = 0, TIME_TUTUP = NULL WHERE TAHUN = :next_tahun AND BULAN = :next_bulan")
                     ->execute(['next_tahun' => $nextTahun, 'next_bulan' => $nextBulan]);
             }
-            $log("   - Update SPD_PERIODE: Periode $periodeBerjalan ditutup, Periode $nextPeriode diaktifkan.");
+            $log("   - Update spd_periode: Periode $periodeBerjalan ditutup, Periode $nextPeriode diaktifkan.");
 
             // D. Update BPPI (jika tabel ada)
             $tblBppi = resolvePipelineTableName($pdo, 'spd_bppi');
@@ -1004,7 +1004,7 @@ function executeClosingRekeningPipeline($params = []) {
             $stmtTutupMeter = $pdo->prepare("UPDATE spd_rekening SET IS_TUTUPMETER = 1 WHERE PERIODE = :cur_periode");
             $stmtTutupMeter->execute(['cur_periode' => $periodeBerjalan]);
             $jmlTutupMeter = $stmtTutupMeter->rowCount();
-            $log("   - Update IS_TUTUPMETER = 1 pada SPD_REKENING ($periodeBerjalan): $jmlTutupMeter baris.");
+            $log("   - Update IS_TUTUPMETER = 1 pada spd_rekening ($periodeBerjalan): $jmlTutupMeter baris.");
 
             // I. Hitung Rekapitulasi Akhir
             $stmtRekap = $pdo->prepare("
