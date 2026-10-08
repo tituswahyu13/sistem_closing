@@ -123,8 +123,13 @@ try {
 $action = $_GET['action'] ?? '';
 $periode = $_GET['periode'] ?? '202607';
 
+// Authenticate and release session lock early for read operations to prevent request blocking
+$currentUser = getAuthenticatedUser($sessionTimeoutMinutes);
+if ($action !== 'login' && $action !== 'logout') {
+    session_write_close();
+}
+
 if ($action === 'check_session') {
-    $currentUser = getAuthenticatedUser($sessionTimeoutMinutes);
     if ($currentUser) {
         $remainingSeconds = max(0, ($sessionTimeoutMinutes * 60) - (time() - ($_SESSION['last_activity'] ?? time())));
         echo json_encode([
@@ -2273,7 +2278,7 @@ if ($action === 'beli' || $action === 'batal') {
                 SELECT a.NO_PDAM
                 FROM spd_tunggak a
                 WHERE a.LUNAS = 0 AND a.IS_DELETE = 0 AND a.PH IS NULL
-                GROUP BY a.NO_PDAM, DATE_FORMAT(a.REKENING_BULAN, '%Y%m')
+                GROUP BY a.NO_PDAM, a.REKENING_BULAN
                 HAVING COUNT(*) > 1
             ) x
         ");
@@ -2316,8 +2321,8 @@ if ($action === 'beli' || $action === 'batal') {
         $stmtAnomaliAdmin = $pdo->prepare("
             SELECT COUNT(*) FROM (
                 SELECT r.ID
-                FROM SPD_REKENING r
-                JOIN SPD_ANGSURAN ang 
+                FROM spd_rekening r
+                JOIN spd_angsuran ang 
                   ON ang.STLGN_ID = r.STLGN_ID 
                  AND ang.KRITERIA = 'administrasi'
                  AND (
@@ -2399,13 +2404,21 @@ if ($action === 'beli' || $action === 'batal') {
 
         $whereClause = implode(' AND ', $where);
 
-        // Count total
-        $countSql = "
-            SELECT COUNT(*) 
-            FROM spd_rekening a
-            JOIN spd_stlgn b ON b.ID = a.STLGN_ID
-            WHERE $whereClause
-        ";
+        // Fast Count total (skip JOIN if search is empty)
+        if ($search !== '') {
+            $countSql = "
+                SELECT COUNT(*) 
+                FROM spd_rekening a
+                JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+                WHERE $whereClause
+            ";
+        } else {
+            $countSql = "
+                SELECT COUNT(*) 
+                FROM spd_rekening a
+                WHERE $whereClause
+            ";
+        }
         $stmtCount = $pdo->prepare($countSql);
         $stmtCount->execute($params);
         $totalRecords = (int)$stmtCount->fetchColumn();
@@ -2473,19 +2486,20 @@ if ($action === 'beli' || $action === 'batal') {
             GROUP BY a.NO_PDAM
             HAVING COUNT(*) > 1
             ORDER BY a.NO_PDAM ASC
+            LIMIT 100
         ");
         $stmtTagrek->execute(['periode' => $reqPeriode]);
         $tagrekDuplicates = $stmtTagrek->fetchAll(PDO::FETCH_ASSOC);
 
-        // 2. Tunggak Duplicates
+        // 2. Tunggak Duplicates (Direct column group by for maximum index speed)
         $stmtTunggak = $pdo->query("
-            SELECT a.NO_PDAM, b.NAMA, b.ALAMAT, DATE_FORMAT(a.REKENING_BULAN, '%Y%m') as periode, a.LOKBAY_ID, a.STGOL_ID,
+            SELECT a.NO_PDAM, b.NAMA, b.ALAMAT, a.REKENING_BULAN as periode, a.LOKBAY_ID, a.STGOL_ID,
                    COUNT(*) as jml_kembar, SUM(a.JUMLAH) as tot_tunggak,
                    GROUP_CONCAT(a.ID SEPARATOR ', ') as ids
             FROM spd_tunggak a
             JOIN spd_stlgn b ON b.ID = a.STLGN_ID
             WHERE a.LUNAS = 0 AND a.IS_DELETE = 0 AND a.PH IS NULL
-            GROUP BY a.NO_PDAM, DATE_FORMAT(a.REKENING_BULAN, '%Y%m')
+            GROUP BY a.NO_PDAM, a.REKENING_BULAN
             HAVING COUNT(*) > 1
             ORDER BY a.NO_PDAM ASC
             LIMIT 100
@@ -2605,15 +2619,15 @@ if ($action === 'beli' || $action === 'batal') {
                 (r.ADMINISTRASI + r.PEMELIHARAAN) AS RK_SEHARUSNYA,
                 (r.RK - (r.ADMINISTRASI + r.PEMELIHARAAN)) AS SELISIH_RK
 
-            FROM SPD_REKENING r
-            JOIN SPD_ANGSURAN ang 
+            FROM spd_rekening r
+            JOIN spd_angsuran ang 
               ON ang.STLGN_ID = r.STLGN_ID 
              AND ang.KRITERIA = 'administrasi'
              AND (
                  ang.PERIODE = r.PERIODE 
                  OR (ang.PERIODE < r.PERIODE AND ang.XRLANG < ang.XANGSUR)
              )
-            LEFT JOIN SPD_STLGN s ON s.ID = r.STLGN_ID
+            LEFT JOIN spd_stlgn s ON s.ID = r.STLGN_ID
             WHERE r.PERIODE = :periode
               AND r.STATUS != 'L'
               AND (

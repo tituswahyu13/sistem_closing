@@ -4876,8 +4876,8 @@ async function refreshAuditData(showFeedback = true) {
     }
 
     try {
+        await loadAuditSummary();
         await Promise.allSettled([
-            loadAuditSummary(),
             loadUncontrolledRekening(uncontrolledCurrentPage),
             loadTagihanDuplicates(),
             loadAngsuranDuplicates(),
@@ -5065,19 +5065,25 @@ function startSessionTimer() {
     }, 1000);
 }
 
-async function checkAuthSession() {
+let isSessionActive = false;
+
+async function checkAuthSession(isInitial = false) {
     try {
         const res = await fetch('api.php?action=check_session');
         const json = await res.json();
         if (json.status === 'success' && json.authenticated) {
+            isSessionActive = true;
             hideLoginOverlay();
             updateSessionUI(json.user, json.remaining_seconds || 3600);
         } else {
-            showLoginOverlay();
+            isSessionActive = false;
+            showLoginOverlay(json.message || null);
         }
     } catch (e) {
         console.error('Error checking session:', e);
-        showLoginOverlay();
+        if (isInitial || !isSessionActive) {
+            showLoginOverlay();
+        }
     }
 }
 
