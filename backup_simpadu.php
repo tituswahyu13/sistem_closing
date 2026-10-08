@@ -44,7 +44,7 @@ function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
     $host = !empty($env['DB_HOST']) ? $env['DB_HOST'] : '192.168.0.10';
     $db   = !empty($env['DB_NAME']) ? $env['DB_NAME'] : 'simpadu';
     $user = !empty($env['DB_USER']) ? $env['DB_USER'] : 'root';
-    $pass = array_key_exists('DB_PASS', $env) ? $env['DB_PASS'] : 'xyz123';
+    $pass = array_key_exists('DB_PASS', $env) ? $env['DB_PASS'] : '';
     $port = !empty($env['PORT']) ? $env['PORT'] : '3306';
 
     $backupDir = __DIR__ . '/backups';

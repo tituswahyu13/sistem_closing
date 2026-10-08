@@ -42,8 +42,8 @@ $port = !empty($env['PORT']) ? $env['PORT'] : '3306';
 
 // Auth credentials from .env
 $authUsername = !empty($env['AUTH_USERNAME']) ? $env['AUTH_USERNAME'] : 'admin';
-$authPassword = !empty($env['AUTH_PASSWORD']) ? $env['AUTH_PASSWORD'] : 'pdamjaya3x';
-$authPin      = !empty($env['AUTH_PIN']) ? $env['AUTH_PIN'] : '199407';
+$authPassword = !empty($env['AUTH_PASSWORD']) ? $env['AUTH_PASSWORD'] : '';
+$authPin      = !empty($env['AUTH_PIN']) ? $env['AUTH_PIN'] : '';
 $sessionTimeoutMinutes = !empty($env['SESSION_TIMEOUT_MINUTES']) ? intval($env['SESSION_TIMEOUT_MINUTES']) : 60;
 
 function logUserAudit($pdo, $username, $action, $details = '') {
@@ -1798,12 +1798,15 @@ if ($action === 'beli' || $action === 'batal') {
     try {
         $target = strtolower(trim($_POST['target'] ?? $_GET['target'] ?? ''));
 
+        $currentDbPass = array_key_exists('DB_PASS', $env) ? $env['DB_PASS'] : '';
+        $currentDbUser = !empty($env['DB_USER']) ? $env['DB_USER'] : 'root';
+
         $serverPresets = [
             'simpam' => [
                 'host' => '192.168.0.10',
                 'port' => 3306,
-                'user' => 'root',
-                'pass' => 'xyz123',
+                'user' => $currentDbUser,
+                'pass' => $currentDbPass,
                 'name' => 'simpadu',
                 'label' => 'SIMPAM (Development)',
                 'env_type' => 'Development'
@@ -1811,8 +1814,8 @@ if ($action === 'beli' || $action === 'batal') {
             'simpadu' => [
                 'host' => '192.168.8.11',
                 'port' => 3306,
-                'user' => 'root',
-                'pass' => 'xyz123',
+                'user' => $currentDbUser,
+                'pass' => $currentDbPass,
                 'name' => 'simpadu',
                 'label' => 'SIMPADU (Production)',
                 'env_type' => 'Production'
@@ -1820,8 +1823,8 @@ if ($action === 'beli' || $action === 'batal') {
             'localhost' => [
                 'host' => '127.0.0.1',
                 'port' => 3306,
-                'user' => 'root',
-                'pass' => 'xyz123',
+                'user' => $currentDbUser,
+                'pass' => $currentDbPass,
                 'name' => 'simpadu',
                 'label' => 'Localhost (127.0.0.1)',
                 'env_type' => 'Local'
@@ -1853,13 +1856,18 @@ if ($action === 'beli' || $action === 'batal') {
             throw new Exception("Gagal terhubung ke {$preset['label']} ({$preset['host']}): " . $pe->getMessage());
         }
 
-        // Tulis konfigurasi baru ke file .env
+        // Tulis konfigurasi baru ke file .env tanpa menghapus konfigurasi lain
         $envContent = "# Database Configuration\n" .
                       "DB_HOST=" . $preset['host'] . "\n" .
                       "DB_USER=" . $preset['user'] . "\n" .
                       "DB_PASS=" . $preset['pass'] . "\n" .
                       "DB_NAME=" . $preset['name'] . "\n" .
-                      "PORT=" . $preset['port'] . "\n";
+                      "PORT=" . $preset['port'] . "\n\n" .
+                      "# Konfigurasi Autentikasi dan Sesi Operator\n" .
+                      "AUTH_USERNAME=" . ($env['AUTH_USERNAME'] ?? 'admin') . "\n" .
+                      "AUTH_PASSWORD=" . ($env['AUTH_PASSWORD'] ?? '') . "\n" .
+                      "AUTH_PIN=" . ($env['AUTH_PIN'] ?? '') . "\n" .
+                      "SESSION_TIMEOUT_MINUTES=" . ($env['SESSION_TIMEOUT_MINUTES'] ?? '60') . "\n";
 
         file_put_contents($envFile, $envContent);
 

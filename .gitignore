@@ -1,13 +1,17 @@
 # Dependencies
 node_modules/
 
-# Environment Local Settings
+# Environment Local & Secret Settings
+.env
 .env.local
+.env.*.local
+.env.deploy_bak
 
 # Backups & Large SQL Dumps
 backups/*.sql
 backups/*.sql.gz
 backups/*.log
+backups/.*.pid
 *.log
 
 # System & OS Files
