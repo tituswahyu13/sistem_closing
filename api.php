@@ -1447,6 +1447,7 @@ if ($action === 'beli' || $action === 'batal') {
         ]);
 
         if ($result['success']) {
+            $pdo->prepare("UPDATE rekening_config SET status = 'SUCCESS', pesan_terakhir = 'Closing Rekening Sukses Penuh (6/6 Tahap)' WHERE status = 'FAILED' ORDER BY id DESC LIMIT 1")->execute();
             echo json_encode([
                 "status" => "success",
                 "message" => "Resume Pipeline Closing Rekening berhasil dieksekusi!",
