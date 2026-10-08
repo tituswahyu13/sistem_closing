@@ -3314,15 +3314,22 @@ async function runClosingRekeningPipeline() {
             })
         });
 
-        clearInterval(poller);
-        const json = await res.json();
+        let json = null;
+        try {
+            json = await res.json();
+        } catch (parseErr) {
+            const rawText = await res.text().catch(() => '');
+            throw new Error(`HTTP ${res.status} ${res.statusText}: ${rawText.slice(0, 300) || 'Gagal memproses respons server'}`);
+        }
 
-        if (json.data && json.data.logs && pipelineRekeningConsoleOutput) {
+        clearInterval(poller);
+
+        if (json && json.data && json.data.logs && pipelineRekeningConsoleOutput) {
             pipelineRekeningConsoleOutput.textContent = json.data.logs.join('\n');
             pipelineRekeningConsoleOutput.scrollTop = pipelineRekeningConsoleOutput.scrollHeight;
         }
 
-        if (json.status === 'success') {
+        if (json && json.status === 'success') {
             const data = json.data;
             if (pipelineRekeningBatchIdBadge) pipelineRekeningBatchIdBadge.textContent = `Batch: ${data.batch_id} (${data.periode})`;
             if (pipelineRekeningLiveIndicator) {
@@ -3357,14 +3364,15 @@ async function runClosingRekeningPipeline() {
                 pipelineRekeningStatusBadge.className = 'badge badge-danger';
             }
             stopRekeningStopwatch('Gagal');
-            updateRekeningProgressUI(0, 'FAILED', `Closing Rekening Gagal: ${json.message || json.error}`, false);
-            showNotification('Gagal', `Closing Rekening Terhenti!\n\nDetail: ${json.message || json.error}`, 'danger');
+            const errMsg = (json && (json.message || json.error)) || 'Closing Rekening Gagal';
+            updateRekeningProgressUI(0, 'FAILED', `Closing Rekening Gagal: ${errMsg}`, false);
+            showNotification('Gagal', `Closing Rekening Terhenti!\n\nDetail: ${errMsg}`, 'danger');
             loadRekeningPipelineLogs();
         }
     } catch (err) {
         clearInterval(poller);
         stopRekeningStopwatch('Error');
-        updateRekeningProgressUI(0, 'FAILED', 'Terjadi kesalahan jaringan/timeout', false);
+        updateRekeningProgressUI(0, 'FAILED', 'Gagal: ' + err.message, false);
         showNotification('Error', 'Terjadi kesalahan koneksi atau eksekusi: ' + err.message, 'danger');
         if (pipelineRekeningLiveIndicator) {
             pipelineRekeningLiveIndicator.textContent = 'ERROR';
