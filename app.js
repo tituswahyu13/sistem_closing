@@ -745,6 +745,7 @@ function switchTab(tabId) {
         loadUncontrolledRekening(1);
         loadTagihanDuplicates();
         loadAngsuranDuplicates();
+        loadAnomaliAngsuranAdmin();
     } else if (tabId === 'backup') {
         pageTitle.textContent = 'Pencadangan Database Otomatis';
         if (budgetPanel) budgetPanel.style.display = 'none';
@@ -3912,10 +3913,12 @@ function switchAuditSubtab(subtabId) {
     const panelUncontrolled = document.getElementById('audit-subpanel-uncontrolled');
     const panelTagihan = document.getElementById('audit-subpanel-tagihan');
     const panelAngsuran = document.getElementById('audit-subpanel-angsuran');
+    const panelAnomaliAdmin = document.getElementById('audit-subpanel-anomali-admin');
 
     if (panelUncontrolled) panelUncontrolled.style.display = (subtabId === 'uncontrolled') ? 'flex' : 'none';
     if (panelTagihan) panelTagihan.style.display = (subtabId === 'tagihan') ? 'flex' : 'none';
     if (panelAngsuran) panelAngsuran.style.display = (subtabId === 'angsuran') ? 'flex' : 'none';
+    if (panelAnomaliAdmin) panelAnomaliAdmin.style.display = (subtabId === 'anomali_admin') ? 'flex' : 'none';
 }
 
 // Load Audit Summary
@@ -3934,11 +3937,13 @@ async function loadAuditSummary() {
             const elTagrek = document.getElementById('audit-stat-tagrek-dup');
             const elTunggak = document.getElementById('audit-stat-tunggak-dup');
             const elAngsuran = document.getElementById('audit-stat-angsuran-dup');
+            const elAnomaliAdmin = document.getElementById('audit-stat-anomali-admin');
 
             if (elUncontrolled) elUncontrolled.textContent = (metrics.rekening_belum_kontrol || 0).toLocaleString('id-ID');
             if (elTagrek) elTagrek.textContent = (metrics.tagrek_duplikat || 0).toLocaleString('id-ID');
             if (elTunggak) elTunggak.textContent = ((metrics.tunggak_duplikat || 0) + (metrics.silang_duplikat || 0)).toLocaleString('id-ID');
             if (elAngsuran) elAngsuran.textContent = (metrics.angsuran_duplikat || 0).toLocaleString('id-ID');
+            if (elAnomaliAdmin) elAnomaliAdmin.textContent = (metrics.anomali_angsuran_admin || 0).toLocaleString('id-ID');
 
             // Update sub-labels
             const subUncontrolled = document.getElementById('audit-sub-uncontrolled');
@@ -3951,6 +3956,7 @@ async function loadAuditSummary() {
             const badgeTabUncontrolled = document.getElementById('subtab-badge-uncontrolled');
             const badgeTabTagihan = document.getElementById('subtab-badge-tagihan');
             const badgeTabAngsuran = document.getElementById('subtab-badge-angsuran');
+            const badgeTabAnomaliAdmin = document.getElementById('subtab-badge-anomali-admin');
 
             if (badgeTabUncontrolled) {
                 badgeTabUncontrolled.textContent = (metrics.rekening_belum_kontrol || 0).toLocaleString('id-ID');
@@ -3965,6 +3971,10 @@ async function loadAuditSummary() {
                 badgeTabAngsuran.textContent = (metrics.angsuran_duplikat || 0).toLocaleString('id-ID');
                 badgeTabAngsuran.className = `badge ${metrics.angsuran_duplikat > 0 ? 'badge-danger' : 'badge-success'}`;
             }
+            if (badgeTabAnomaliAdmin) {
+                badgeTabAnomaliAdmin.textContent = (metrics.anomali_angsuran_admin || 0).toLocaleString('id-ID');
+                badgeTabAnomaliAdmin.className = `badge ${metrics.anomali_angsuran_admin > 0 ? 'badge-danger' : 'badge-success'}`;
+            }
 
             // Update Overall Status Badge
             const overallBadge = document.getElementById('audit-overall-status-badge');
@@ -3973,7 +3983,7 @@ async function loadAuditSummary() {
                     overallBadge.className = 'badge badge-success';
                     overallBadge.innerHTML = '<i class="ph ph-shield-check"></i> Siap Closing (Data Bersih)';
                 } else {
-                    const totalIssues = (metrics.rekening_belum_kontrol || 0) + (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.angsuran_duplikat || 0);
+                    const totalIssues = (metrics.rekening_belum_kontrol || 0) + (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.angsuran_duplikat || 0) + (metrics.anomali_angsuran_admin || 0);
                     overallBadge.className = 'badge badge-warning';
                     overallBadge.innerHTML = `<i class="ph ph-warning"></i> Perlu Perhatian (${totalIssues} Anomali)`;
                 }
@@ -4337,6 +4347,126 @@ async function exportUncontrolledCSV() {
     }
 }
 
+// 4. Anomali Angsuran Administrasi Data Cache & Loader
+let anomaliAdminDataCache = [];
+
+async function loadAnomaliAngsuranAdmin() {
+    const tbody = document.getElementById('tbody-anomali-admin');
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="11" style="text-align: center; color: var(--text-secondary); padding: 2rem;">
+                    <i class="ph ph-spinner spinner" style="font-size: 1.5rem; color: #fb7185; display: block; margin: 0 auto 0.5rem;"></i>
+                    Memeriksa anomali rekening angsuran administrasi...
+                </td>
+            </tr>
+        `;
+    }
+
+    try {
+        const res = await fetch('api.php?action=get_anomali_angsuran_admin');
+        const json = await res.json();
+
+        if (json.status === 'success' && tbody) {
+            const rows = json.data || [];
+            anomaliAdminDataCache = rows;
+
+            if (rows.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="11" style="text-align: center; color: #10b981; padding: 2rem;">
+                            <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ditemukan anomali angsuran administrasi (Bersih).
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = rows.map(r => `
+                <tr>
+                    <td><strong style="color: #fff; font-family: monospace;">${r.NO_PDAM || '-'}</strong></td>
+                    <td>
+                        <strong>${r.NAMA || '-'}</strong>
+                        <span style="display: block; font-size: 0.72rem; color: var(--text-secondary);">${r.ALAMAT || '-'}</span>
+                    </td>
+                    <td><span class="badge badge-secondary">${r.NO_BUKTI || '-'}</span></td>
+                    <td><span class="badge badge-info">${r.KRITERIA || '-'}</span></td>
+                    <td style="text-align: right; font-family: monospace;">${(parseInt(r.VOLUME_REAL) || 0).toLocaleString('id-ID')} m³</td>
+                    <td style="text-align: right; font-family: monospace; color: ${parseInt(r.VOL_TAGIHAN_SAAT_INI) !== 0 ? '#f87171' : '#10b981'}; font-weight: 600;">
+                        ${(parseInt(r.VOL_TAGIHAN_SAAT_INI) || 0).toLocaleString('id-ID')} m³
+                    </td>
+                    <td style="text-align: right; font-family: monospace; color: ${parseFloat(r.AIR_SAAT_INI) !== 0 ? '#f87171' : '#10b981'}; font-weight: 600;">
+                        Rp ${(parseFloat(r.AIR_SAAT_INI) || 0).toLocaleString('id-ID')}
+                    </td>
+                    <td style="text-align: right; font-family: monospace;">
+                        Rp ${(parseFloat(r.RK_SAAT_INI) || 0).toLocaleString('id-ID')}
+                    </td>
+                    <td style="text-align: right; font-family: monospace; color: #34d399; font-weight: 600;">
+                        Rp ${(parseFloat(r.RK_SEHARUSNYA) || 0).toLocaleString('id-ID')}
+                    </td>
+                    <td style="text-align: right; font-family: monospace; color: ${parseFloat(r.SELISIH_RK) !== 0 ? '#fbbf24' : '#10b981'}; font-weight: 600;">
+                        Rp ${(parseFloat(r.SELISIH_RK) || 0).toLocaleString('id-ID')}
+                    </td>
+                    <td style="text-align: center;">
+                        <span class="badge badge-danger"><i class="ph ph-warning"></i> Anomali</span>
+                    </td>
+                </tr>
+            `).join('');
+        }
+    } catch (e) {
+        console.error('Error loading anomali admin:', e);
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="11" style="text-align: center; color: #ef4444; padding: 2rem;">
+                        <i class="ph ph-warning"></i> Gagal memuat data: ${e.message}
+                    </td>
+                </tr>
+            `;
+        }
+    }
+}
+
+function exportAnomaliAdminCsv() {
+    if (!anomaliAdminDataCache || anomaliAdminDataCache.length === 0) {
+        showNotification('Tidak Ada Data', 'Tidak ada data anomali angsuran administrasi untuk diekspor.', 'warning');
+        return;
+    }
+
+    const headers = ['NO_PDAM', 'NAMA', 'ALAMAT', 'PERIODE', 'NO_BUKTI', 'KRITERIA', 'VOL_REAL', 'VOL_TAGIHAN_SAAT_INI', 'VOL_TAGIHAN_SEHARUSNYA', 'AIR_SAAT_INI', 'AIR_SEHARUSNYA', 'SELISIH_AIR', 'RK_SAAT_INI', 'RK_SEHARUSNYA', 'SELISIH_RK'];
+    const csvContent = [
+        headers.join(','),
+        ...anomaliAdminDataCache.map(r => [
+            `"${r.NO_PDAM || ''}"`,
+            `"${(r.NAMA || '').replace(/"/g, '""')}"`,
+            `"${(r.ALAMAT || '').replace(/"/g, '""')}"`,
+            `"${r.PERIODE || ''}"`,
+            `"${r.NO_BUKTI || ''}"`,
+            `"${r.KRITERIA || ''}"`,
+            r.VOLUME_REAL || 0,
+            r.VOL_TAGIHAN_SAAT_INI || 0,
+            r.VOL_TAGIHAN_SEHARUSNYA || 0,
+            r.AIR_SAAT_INI || 0,
+            r.AIR_SEHARUSNYA || 0,
+            r.SELISIH_AIR || 0,
+            r.RK_SAAT_INI || 0,
+            r.RK_SEHARUSNYA || 0,
+            r.SELISIH_RK || 0
+        ].join(','))
+    ].join('\n');
+
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `anomali_angsuran_administrasi_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showNotification('Export Berhasil', `Berhasil mengunduh ${anomaliAdminDataCache.length} baris data ke format CSV.`, 'success');
+}
+
 // Wire Audit Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     // Subtab pills
@@ -4352,6 +4482,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('card-kpi-tagrek')?.addEventListener('click', () => switchAuditSubtab('tagihan'));
     document.getElementById('card-kpi-tunggak')?.addEventListener('click', () => switchAuditSubtab('tagihan'));
     document.getElementById('card-kpi-angsuran')?.addEventListener('click', () => switchAuditSubtab('angsuran'));
+    document.getElementById('card-kpi-anomali-admin')?.addEventListener('click', () => switchAuditSubtab('anomali_admin'));
 
     // Refresh buttons
     document.getElementById('btn-refresh-audit')?.addEventListener('click', () => {
@@ -4359,12 +4490,19 @@ document.addEventListener('DOMContentLoaded', () => {
         loadUncontrolledRekening(uncontrolledCurrentPage);
         loadTagihanDuplicates();
         loadAngsuranDuplicates();
+        loadAnomaliAngsuranAdmin();
         showNotification('Audit Diperbarui', 'Data validasi pra-closing telah disinkronkan.', 'info');
     });
 
     document.getElementById('btn-reload-uncontrolled')?.addEventListener('click', () => {
         loadUncontrolledRekening(uncontrolledCurrentPage);
     });
+
+    document.getElementById('btn-reload-anomali-admin')?.addEventListener('click', () => {
+        loadAnomaliAngsuranAdmin();
+    });
+
+    document.getElementById('btn-export-anomali-admin-csv')?.addEventListener('click', exportAnomaliAdminCsv);
 
     // Filter controls for uncontrolled
     document.getElementById('btn-apply-uncontrolled-filter')?.addEventListener('click', () => {

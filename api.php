@@ -1981,9 +1981,33 @@ if ($action === 'beli' || $action === 'batal') {
         ");
         $cntAngsurDup = (int)$stmtAngsurDup->fetchColumn();
 
+        // 6. Anomali Angsuran Administrasi
+        $stmtAnomaliAdmin = $pdo->prepare("
+            SELECT COUNT(*) FROM (
+                SELECT r.ID
+                FROM SPD_REKENING r
+                JOIN SPD_ANGSURAN ang 
+                  ON ang.STLGN_ID = r.STLGN_ID 
+                 AND ang.KRITERIA = 'administrasi'
+                 AND (
+                     ang.PERIODE = r.PERIODE 
+                     OR (ang.PERIODE < r.PERIODE AND ang.XRLANG < ang.XANGSUR)
+                 )
+                WHERE r.PERIODE = :periode
+                  AND r.STATUS != 'L'
+                  AND (
+                      r.AIR <> 0 
+                      OR r.VOLUME_TAGIHAN <> 0 
+                      OR r.RK <> (r.ADMINISTRASI + r.PEMELIHARAAN)
+                  )
+            ) x
+        ");
+        $stmtAnomaliAdmin->execute(['periode' => $periodeRekening]);
+        $cntAnomaliAdmin = (int)$stmtAnomaliAdmin->fetchColumn();
+
         // Kesimpulan status
         $readyClosingTagihan = ($cntTagrekDup === 0 && $cntTunggakDup === 0);
-        $readyClosingRekening = ($cntUncontrolled === 0 && $cntAngsurDup === 0);
+        $readyClosingRekening = ($cntUncontrolled === 0 && $cntAngsurDup === 0 && $cntAnomaliAdmin === 0);
 
         echo json_encode([
             "status" => "success",
@@ -1995,7 +2019,8 @@ if ($action === 'beli' || $action === 'batal') {
                 "tagrek_duplikat" => $cntTagrekDup,
                 "tunggak_duplikat" => $cntTunggakDup,
                 "silang_duplikat" => $cntSilangDup,
-                "angsuran_duplikat" => $cntAngsurDup
+                "angsuran_duplikat" => $cntAngsurDup,
+                "anomali_angsuran_admin" => $cntAnomaliAdmin
             ],
             "kesiapan" => [
                 "closing_tagihan_ready" => $readyClosingTagihan,
@@ -2217,7 +2242,72 @@ if ($action === 'beli' || $action === 'batal') {
         http_response_code(500);
         echo json_encode(["status" => "error", "message" => $e->getMessage()]);
     }
+} elseif ($action === 'get_anomali_angsuran_admin') {
+    try {
+        $reqPeriode = trim($_GET['periode'] ?? '');
+        if (!$reqPeriode) {
+            $stmtPer = $pdo->query("SELECT * FROM spd_periode WHERE IS_TUTUP = 0 LIMIT 1");
+            $perRow = $stmtPer->fetch();
+            $reqPeriode = $perRow ? sprintf("%04d%02d", $perRow['TAHUN'], $perRow['BULAN']) : date('Ym');
+        }
+
+        $sql = "
+            SELECT 
+                r.ID AS REKENING_ID,
+                r.NO_PDAM,
+                r.PERIODE,
+                r.STGOL_ID,
+                s.NAMA,
+                s.ALAMAT,
+                ang.NO_BUKTI,
+                ang.KRITERIA,
+                
+                r.VOLUME_REAL,
+                r.VOLUME_TAGIHAN AS VOL_TAGIHAN_SAAT_INI,
+                0 AS VOL_TAGIHAN_SEHARUSNYA,
+                
+                r.AIR AS AIR_SAAT_INI,
+                0 AS AIR_SEHARUSNYA,
+                (r.AIR - 0) AS SELISIH_AIR,
+                
+                r.RK AS RK_SAAT_INI,
+                (r.ADMINISTRASI + r.PEMELIHARAAN) AS RK_SEHARUSNYA,
+                (r.RK - (r.ADMINISTRASI + r.PEMELIHARAAN)) AS SELISIH_RK
+
+            FROM SPD_REKENING r
+            JOIN SPD_ANGSURAN ang 
+              ON ang.STLGN_ID = r.STLGN_ID 
+             AND ang.KRITERIA = 'administrasi'
+             AND (
+                 ang.PERIODE = r.PERIODE 
+                 OR (ang.PERIODE < r.PERIODE AND ang.XRLANG < ang.XANGSUR)
+             )
+            LEFT JOIN SPD_STLGN s ON s.ID = r.STLGN_ID
+            WHERE r.PERIODE = :periode
+              AND r.STATUS != 'L'
+              AND (
+                  r.AIR <> 0 
+                  OR r.VOLUME_TAGIHAN <> 0 
+                  OR r.RK <> (r.ADMINISTRASI + r.PEMELIHARAAN)
+              )
+            ORDER BY r.NO_PDAM ASC
+        ";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(['periode' => $reqPeriode]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            "status" => "success",
+            "periode" => $reqPeriode,
+            "total" => count($rows),
+            "data" => $rows
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
 } else {
-    echo json_encode(["message" => "Welcome to API. Use ?action=beli, ?action=batal, ?action=dibeli, ?action=get_config, ?action=get_logs, ?action=get_backups, ?action=run_backup, ?action=run_restore, ?action=run_pipeline, ?action=get_pipeline_logs, ?action=get_audit_summary, ?action=get_uncontrolled_rekening, ?action=get_tagihan_duplicates, ?action=get_angsuran_duplicates, ?action=get_server_metrics, or ?action=switch_db_server"]);
+    echo json_encode(["message" => "Welcome to API. Use ?action=beli, ?action=batal, ?action=dibeli, ?action=get_config, ?action=get_logs, ?action=get_backups, ?action=run_backup, ?action=run_restore, ?action=run_pipeline, ?action=get_pipeline_logs, ?action=get_audit_summary, ?action=get_uncontrolled_rekening, ?action=get_tagihan_duplicates, ?action=get_angsuran_duplicates, ?action=get_anomali_angsuran_admin, ?action=get_server_metrics, or ?action=switch_db_server"]);
 }
 

@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=60">
+    <link rel="stylesheet" href="styles.css?v=61">
 </head>
 <body>
     <div class="app-container">
@@ -1286,6 +1286,18 @@
                                 <span class="stat-sub" id="audit-sub-angsuran">Target: spd_angsuran & rekang</span>
                             </div>
                         </div>
+
+                        <!-- KPI 5: Anomali Angsuran Admin -->
+                        <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-anomali-admin">
+                            <div class="stat-icon-wrapper danger" style="background: rgba(244, 63, 94, 0.15); color: #fb7185;">
+                                <i class="ph ph-file-x"></i>
+                            </div>
+                            <div class="stat-content">
+                                <span class="stat-label">Anomali Angsuran Admin</span>
+                                <h3 class="stat-value" id="audit-stat-anomali-admin" style="color: #fb7185;">0</h3>
+                                <span class="stat-sub" id="audit-sub-anomali-admin">Target: spd_angsuran (admin)</span>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Sub-tab Navigation Pills -->
@@ -1302,6 +1314,10 @@
                             <button type="button" class="subtab-btn" id="subtab-btn-angsuran" data-audit-tab="angsuran">
                                 <i class="ph ph-money"></i> 3. Cek Duplikat Tutup Rekening
                                 <span class="badge badge-secondary" id="subtab-badge-angsuran">0</span>
+                            </button>
+                            <button type="button" class="subtab-btn" id="subtab-btn-anomali-admin" data-audit-tab="anomali_admin">
+                                <i class="ph ph-file-x"></i> 4. Anomali Angsuran Admin
+                                <span class="badge badge-secondary" id="subtab-badge-anomali-admin">0</span>
                             </button>
                         </div>
                     </div>
@@ -1570,6 +1586,55 @@
                                         </tbody>
                                     </table>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sub-Panel 4: Anomali Angsuran Administrasi -->
+                    <div class="audit-subpanel mt-4" id="audit-subpanel-anomali-admin" style="display: none;">
+                        <div class="glass-panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h2 style="color: #fb7185;"><i class="ph ph-file-x"></i> 4. Anomali Angsuran Kriteria Administrasi</h2>
+                                    <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
+                                        Pelanggan dengan angsuran administrasi aktif yang masih tercatat tagihan air &gt; 0, volume tagihan &gt; 0, atau RK tidak sama dengan (Administrasi + Pemeliharaan).
+                                    </p>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                    <button type="button" class="btn btn-sm btn-secondary" id="btn-export-anomali-admin-csv">
+                                        <i class="ph ph-download-simple"></i> Unduh CSV
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-primary" id="btn-reload-anomali-admin">
+                                        <i class="ph ph-arrows-clockwise"></i> Muat Ulang
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>NO PDAM</th>
+                                            <th>NAMA PELANGGAN</th>
+                                            <th>NO BUKTI</th>
+                                            <th>KRITERIA</th>
+                                            <th style="text-align: right;">VOL REAL</th>
+                                            <th style="text-align: right;">VOL TAGIHAN</th>
+                                            <th style="text-align: right;">TAGIHAN AIR</th>
+                                            <th style="text-align: right;">RK SAAT INI</th>
+                                            <th style="text-align: right;">RK SEHARUSNYA</th>
+                                            <th style="text-align: right;">SELISIH RK</th>
+                                            <th style="text-align: center;">STATUS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-anomali-admin">
+                                        <tr>
+                                            <td colspan="11" style="text-align: center; color: #10b981; padding: 2rem;">
+                                                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ditemukan anomali angsuran administrasi (Bersih).
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
@@ -2055,6 +2120,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=60"></script>
+    <script src="app.js?v=61"></script>
 </body>
 </html>
