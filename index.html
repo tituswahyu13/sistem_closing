@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=65">
+    <link rel="stylesheet" href="styles.css?v=66">
 </head>
 <body>
     <div class="app-container">
@@ -1236,7 +1236,7 @@
                                         <span class="badge badge-success" id="audit-overall-status-badge" style="font-size: 0.8rem; padding: 0.4rem 0.8rem;">
                                             <i class="ph ph-shield-check"></i> Memuat Status...
                                         </span>
-                                        <button type="button" class="btn btn-sm btn-secondary" id="btn-refresh-audit" style="font-size: 0.78rem; padding: 0.4rem 0.8rem; border-color: rgba(255,255,255,0.15);">
+                                        <button type="button" class="btn btn-sm btn-secondary" id="btn-refresh-audit" onclick="refreshAuditData(true)" style="font-size: 0.78rem; padding: 0.4rem 0.8rem; border-color: rgba(255,255,255,0.15);">
                                             <i class="ph ph-arrows-clockwise"></i> Audit Ulang
                                         </button>
                                     </div>
@@ -2475,7 +2475,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=65"></script>
+    <script src="app.js?v=66"></script>
 </body>
 </html>
 

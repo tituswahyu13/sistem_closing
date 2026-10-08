@@ -4867,8 +4867,40 @@ function exportAnomaliAdminCsv() {
     showNotification('Export Berhasil', `Berhasil mengunduh ${anomaliAdminDataCache.length} baris data ke format CSV.`, 'success');
 }
 
-// Wire Audit Event Listeners
-document.addEventListener('DOMContentLoaded', () => {
+// Refresh All Audit Modules with visual loading state
+async function refreshAuditData(showFeedback = true) {
+    const btn = document.getElementById('btn-refresh-audit');
+    if (btn) {
+        btn.innerHTML = '<i class="ph ph-spinner-gap ph-spin"></i> Mengaudit...';
+        btn.disabled = true;
+    }
+
+    try {
+        await Promise.allSettled([
+            loadAuditSummary(),
+            loadUncontrolledRekening(uncontrolledCurrentPage),
+            loadTagihanDuplicates(),
+            loadAngsuranDuplicates(),
+            loadAnomaliAngsuranAdmin()
+        ]);
+        if (showFeedback) {
+            showNotification('Audit Diperbarui', 'Data validasi pra-closing telah disinkronkan.', 'success');
+        }
+    } catch (e) {
+        console.error('Error in refreshAuditData:', e);
+        if (showFeedback) {
+            showNotification('Gagal Audit', e.message, 'danger');
+        }
+    } finally {
+        if (btn) {
+            btn.innerHTML = '<i class="ph ph-arrows-clockwise"></i> Audit Ulang';
+            btn.disabled = false;
+        }
+    }
+}
+
+// Wire Audit Event Listeners directly
+function initAuditListeners() {
     // Subtab pills
     document.querySelectorAll('[data-audit-tab]').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -4884,14 +4916,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('card-kpi-angsuran')?.addEventListener('click', () => switchAuditSubtab('angsuran'));
     document.getElementById('card-kpi-anomali-admin')?.addEventListener('click', () => switchAuditSubtab('anomali_admin'));
 
-    // Refresh buttons
+    // Main Audit Ulang Refresh button
     document.getElementById('btn-refresh-audit')?.addEventListener('click', () => {
-        loadAuditSummary();
-        loadUncontrolledRekening(uncontrolledCurrentPage);
-        loadTagihanDuplicates();
-        loadAngsuranDuplicates();
-        loadAnomaliAngsuranAdmin();
-        showNotification('Audit Diperbarui', 'Data validasi pra-closing telah disinkronkan.', 'info');
+        refreshAuditData(true);
     });
 
     document.getElementById('btn-reload-uncontrolled')?.addEventListener('click', () => {
@@ -4941,7 +4968,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Export CSV
     document.getElementById('btn-export-uncontrolled-csv')?.addEventListener('click', exportUncontrolledCSV);
-});
+}
+
+// Execute immediately since app.js is loaded at the bottom of the page
+initAuditListeners();
 
 // ====================================================================
 // AUTHENTICATION & SESSION MANAGEMENT MODULE
