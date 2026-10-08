@@ -2267,17 +2267,19 @@ function updatePipelineProgressUI(stepIndex, status, customTitle, isDone = false
     }
 }
 
-function startPipelineStopwatch() {
+function startPipelineStopwatch(customStartMs = null) {
     stopPipelineStopwatch();
-    pipelineStartTimestamp = Date.now();
+    pipelineStartTimestamp = customStartMs || Date.now();
     const timerBadge = document.getElementById('pipeline-live-timer');
-    pipelineLiveTimerInterval = setInterval(() => {
+    const updateTime = () => {
         if (!timerBadge) return;
-        const elapsedSec = Math.floor((Date.now() - pipelineStartTimestamp) / 1000);
+        const elapsedSec = Math.max(0, Math.floor((Date.now() - pipelineStartTimestamp) / 1000));
         const m = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
         const s = String(elapsedSec % 60).padStart(2, '0');
         timerBadge.innerHTML = `<i class="ph ph-timer"></i> ${m}:${s}`;
-    }, 1000);
+    };
+    updateTime();
+    pipelineLiveTimerInterval = setInterval(updateTime, 1000);
 }
 
 function stopPipelineStopwatch(finalText = null) {
@@ -2287,7 +2289,7 @@ function stopPipelineStopwatch(finalText = null) {
     }
     const timerBadge = document.getElementById('pipeline-live-timer');
     if (timerBadge && finalText) {
-        timerBadge.innerHTML = `<i class="ph ph-check-circle"></i> ${finalText}`;
+        timerBadge.innerHTML = `<i class="ph ph-timer"></i> ${finalText}`;
     }
 }
 
@@ -2456,6 +2458,11 @@ async function loadPipelineLogs() {
                         pipelineStatusBadge.innerHTML = '<i class="ph ph-check-circle"></i> SUKSES PENUH';
                         pipelineStatusBadge.className = 'badge badge-success';
                     }
+                    let totalSec = 0;
+                    latestBatch.steps.forEach(st => { totalSec += parseInt(st.durasi_detik || 0, 10); });
+                    const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
+                    const s = String(totalSec % 60).padStart(2, '0');
+                    stopPipelineStopwatch(`${m}:${s}`);
                 } else if (hasRunning || latestBatch.status === 'RUNNING') {
                     if (pipelineLiveIndicator) {
                         pipelineLiveIndicator.textContent = 'RUNNING';
@@ -2466,6 +2473,16 @@ async function loadPipelineLogs() {
                         pipelineStatusBadge.className = 'badge badge-warning';
                     }
                     updatePipelineProgressUI(highestStep, 'RUNNING', `Sedang Berjalan: ${stepNamesDef[highestStep] || 'Tahap ' + highestStep}`);
+
+                    // Start live stopwatch automatically if running
+                    if (!pipelineLiveTimerInterval) {
+                        let startMs = Date.now();
+                        if (latestBatch.waktu_mulai) {
+                            const parsed = new Date(latestBatch.waktu_mulai.replace(' ', 'T')).getTime();
+                            if (!isNaN(parsed) && parsed > 0) startMs = parsed;
+                        }
+                        startPipelineStopwatch(startMs);
+                    }
                 } else if (hasFailed || latestBatch.status === 'FAILED') {
                     if (pipelineLiveIndicator) {
                         pipelineLiveIndicator.textContent = 'FAILED';
@@ -2476,6 +2493,7 @@ async function loadPipelineLogs() {
                         pipelineStatusBadge.className = 'badge badge-danger';
                     }
                     updatePipelineProgressUI(highestStep, 'FAILED', `Gagal pada ${stepNamesDef[highestStep] || 'Tahap ' + highestStep}`);
+                    stopPipelineStopwatch('Gagal');
                 }
 
                 // Tampilkan Live Stream Byte Counter HANYA jika Tahap 1 sedang berstatus RUNNING
@@ -2934,17 +2952,19 @@ function updateRekeningProgressUI(stepIndex, status, customTitle, isDone = false
     }
 }
 
-function startRekeningStopwatch() {
+function startRekeningStopwatch(customStartMs = null) {
     stopRekeningStopwatch();
-    rekeningStartTimestamp = Date.now();
+    rekeningStartTimestamp = customStartMs || Date.now();
     const timerBadge = document.getElementById('pipeline-rekening-live-timer');
-    rekeningLiveTimerInterval = setInterval(() => {
+    const updateTime = () => {
         if (!timerBadge) return;
-        const elapsedSec = Math.floor((Date.now() - rekeningStartTimestamp) / 1000);
+        const elapsedSec = Math.max(0, Math.floor((Date.now() - rekeningStartTimestamp) / 1000));
         const m = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
         const s = String(elapsedSec % 60).padStart(2, '0');
         timerBadge.innerHTML = `<i class="ph ph-timer"></i> ${m}:${s}`;
-    }, 1000);
+    };
+    updateTime();
+    rekeningLiveTimerInterval = setInterval(updateTime, 1000);
 }
 
 function stopRekeningStopwatch(finalText = null) {
@@ -2954,7 +2974,7 @@ function stopRekeningStopwatch(finalText = null) {
     }
     const timerBadge = document.getElementById('pipeline-rekening-live-timer');
     if (timerBadge && finalText) {
-        timerBadge.innerHTML = `<i class="ph ph-check-circle"></i> ${finalText}`;
+        timerBadge.innerHTML = `<i class="ph ph-timer"></i> ${finalText}`;
     }
 }
 
@@ -3118,6 +3138,11 @@ async function loadRekeningPipelineLogs() {
                         pipelineRekeningStatusBadge.innerHTML = '<i class="ph ph-check-circle"></i> SUKSES PENUH';
                         pipelineRekeningStatusBadge.className = 'badge badge-success';
                     }
+                    let totalSec = 0;
+                    latestBatch.steps.forEach(st => { totalSec += parseInt(st.durasi_detik || 0, 10); });
+                    const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
+                    const s = String(totalSec % 60).padStart(2, '0');
+                    stopRekeningStopwatch(`${m}:${s}`);
                 } else if (hasRunning || latestBatch.status === 'RUNNING') {
                     if (pipelineRekeningLiveIndicator) {
                         pipelineRekeningLiveIndicator.textContent = 'RUNNING';
@@ -3128,6 +3153,16 @@ async function loadRekeningPipelineLogs() {
                         pipelineRekeningStatusBadge.className = 'badge badge-warning';
                     }
                     updateRekeningProgressUI(highestStep, 'RUNNING', `Sedang Berjalan: ${rekStepNamesDef[highestStep] || 'Tahap ' + highestStep}`);
+
+                    // Start live stopwatch automatically if running
+                    if (!rekeningLiveTimerInterval) {
+                        let startMs = Date.now();
+                        if (latestBatch.waktu_mulai) {
+                            const parsed = new Date(latestBatch.waktu_mulai.replace(' ', 'T')).getTime();
+                            if (!isNaN(parsed) && parsed > 0) startMs = parsed;
+                        }
+                        startRekeningStopwatch(startMs);
+                    }
                 } else if (hasFailed || latestBatch.status === 'FAILED') {
                     if (pipelineRekeningLiveIndicator) {
                         pipelineRekeningLiveIndicator.textContent = 'FAILED';
@@ -3138,6 +3173,7 @@ async function loadRekeningPipelineLogs() {
                         pipelineRekeningStatusBadge.className = 'badge badge-danger';
                     }
                     updateRekeningProgressUI(highestStep, 'FAILED', `Gagal pada ${rekStepNamesDef[highestStep] || 'Tahap ' + highestStep}`);
+                    stopRekeningStopwatch('Gagal');
                 }
 
                 if (step1IsRunning && json.active_backup && json.active_backup.is_writing) {
