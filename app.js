@@ -3744,6 +3744,94 @@ function updateServerSwitcherUI(activeKey) {
     }
 }
 
+// Database Switching Animated Loading Overlay Helpers
+function showDbSwitchLoading(sourceServer, targetServer) {
+    const overlay = document.getElementById('db-switch-overlay');
+    if (!overlay) return;
+
+    const sourceName = sourceServer === 'simpadu' ? 'SIMPADU' : 'SIMPAM';
+    const sourceIp = sourceServer === 'simpadu' ? '192.168.8.11' : '192.168.0.10';
+    const sourceColor = sourceServer === 'simpadu' ? '#a855f7' : '#38bdf8';
+
+    const targetName = targetServer === 'simpadu' ? 'SIMPADU' : 'SIMPAM';
+    const targetIp = targetServer === 'simpadu' ? '192.168.8.11' : '192.168.0.10';
+    const targetColor = targetServer === 'simpadu' ? '#a855f7' : '#38bdf8';
+
+    const sourceNameEl = document.getElementById('db-source-name');
+    const sourceIpEl = document.getElementById('db-source-ip');
+    const sourceIconEl = document.getElementById('db-source-icon');
+
+    const targetNameEl = document.getElementById('db-target-name');
+    const targetIpEl = document.getElementById('db-target-ip');
+    const targetIconEl = document.getElementById('db-target-icon');
+    const nodeTarget = document.getElementById('db-node-target');
+
+    if (sourceNameEl) sourceNameEl.textContent = sourceName;
+    if (sourceIpEl) sourceIpEl.textContent = sourceIp;
+    if (sourceIconEl) sourceIconEl.style.color = sourceColor;
+
+    if (targetNameEl) targetNameEl.textContent = targetName;
+    if (targetIpEl) targetIpEl.textContent = targetIp;
+    if (targetIconEl) targetIconEl.style.color = targetColor;
+
+    if (nodeTarget) {
+        nodeTarget.className = `db-node-card target target-${targetServer}`;
+    }
+
+    const titleEl = document.getElementById('db-switch-title');
+    const descEl = document.getElementById('db-switch-desc');
+    const barFill = document.getElementById('db-switch-bar-fill');
+
+    if (titleEl) titleEl.innerHTML = `Beralih ke Database <strong>${targetName}</strong>`;
+    if (descEl) descEl.innerHTML = `Sedang memvalidasi jaringan & menghubungkan modul ke <strong>${targetName} (${targetIp})</strong>...`;
+    if (barFill) barFill.style.width = '25%';
+
+    setDbSwitchStep(1, 'active', `Menguji koneksi ${targetIp}:3306...`);
+    setDbSwitchStep(2, 'waiting', 'Menulis konfigurasi sistem (.env)...');
+    setDbSwitchStep(3, 'waiting', 'Inisialisasi ulang & reload data modul...');
+
+    overlay.style.display = 'flex';
+}
+
+function setDbSwitchStep(stepNum, status, customText = null) {
+    const stepEl = document.getElementById(`db-step-${stepNum}`);
+    if (!stepEl) return;
+
+    stepEl.className = `db-switch-step-item ${status}`;
+    const iconEl = stepEl.querySelector('.db-step-icon');
+    const textEl = stepEl.querySelector('.db-step-text');
+
+    if (customText && textEl) {
+        textEl.textContent = customText;
+    }
+
+    if (iconEl) {
+        if (status === 'active') {
+            iconEl.innerHTML = '<i class="ph ph-spinner-gap"></i>';
+        } else if (status === 'completed') {
+            iconEl.innerHTML = '<i class="ph ph-check-circle"></i>';
+        } else {
+            iconEl.innerHTML = '<i class="ph ph-circle"></i>';
+        }
+    }
+}
+
+function updateDbSwitchProgress(percent) {
+    const barFill = document.getElementById('db-switch-bar-fill');
+    if (barFill) barFill.style.width = `${percent}%`;
+}
+
+function hideDbSwitchLoading() {
+    const overlay = document.getElementById('db-switch-overlay');
+    if (!overlay) return;
+    overlay.style.opacity = '0';
+    overlay.style.transition = 'opacity 0.3s ease';
+    setTimeout(() => {
+        overlay.style.display = 'none';
+        overlay.style.opacity = '1';
+    }, 300);
+}
+
 async function executeServerSwitch(targetServer) {
     if (targetServer === currentActiveServerKey) {
         return;
@@ -3760,6 +3848,9 @@ async function executeServerSwitch(targetServer) {
         if (!ok) return;
     }
 
+    const sourceServer = currentActiveServerKey || 'simpam';
+    showDbSwitchLoading(sourceServer, targetServer);
+
     const btnDiagSimpam = document.getElementById('btn-diag-switch-simpam');
     const btnDiagSimpadu = document.getElementById('btn-diag-switch-simpadu');
     const clickedDiagBtn = targetServer === 'simpadu' ? btnDiagSimpadu : btnDiagSimpam;
@@ -3769,7 +3860,13 @@ async function executeServerSwitch(targetServer) {
         clickedDiagBtn.disabled = true;
     }
 
+    const topbarPing = document.getElementById('topbar-db-ping');
+    if (topbarPing) topbarPing.textContent = 'Swapping...';
+
     try {
+        setDbSwitchStep(1, 'active', `Menguji responsivitas port 3306 (${targetServer === 'simpadu' ? '192.168.8.11' : '192.168.0.10'})...`);
+        updateDbSwitchProgress(30);
+
         const formData = new FormData();
         formData.append('target', targetServer);
 
@@ -3783,26 +3880,56 @@ async function executeServerSwitch(targetServer) {
             throw new Error(json.message || 'Gagal mengubah konfigurasi database');
         }
 
+        setDbSwitchStep(1, 'completed', `Koneksi ${json.label} berhasil terverifikasi.`);
+        setDbSwitchStep(2, 'active', 'Menyimpan konfigurasi .env & memperbarui status sesi...');
+        updateDbSwitchProgress(65);
+
+        await new Promise(r => setTimeout(r, 350));
+
         currentActiveServerKey = targetServer;
+
+        setDbSwitchStep(2, 'completed', 'Konfigurasi .env tersimpan.');
+        setDbSwitchStep(3, 'active', 'Menyinkronkan metrik server & memuat ulang modul...');
+        updateDbSwitchProgress(85);
 
         // Reload metrics
         await loadServerMetrics(true);
 
-        // Reload current tab data
-        if (typeof loadData === 'function') {
+        // Reload current tab data based on view
+        const currentActiveTab = document.querySelector('.nav-item.active')?.getAttribute('data-tab') || 'beli';
+        if (currentActiveTab === 'beli' && typeof loadData === 'function') {
             loadData(false);
-        }
-        if (typeof loadPipelineLogs === 'function') {
-            loadPipelineLogs();
-        }
-        if (typeof loadBackupData === 'function') {
-            loadBackupData();
+        } else if (currentActiveTab === 'pipeline' || currentActiveTab === 'otomasi') {
+            if (typeof loadAutomationConfig === 'function') loadAutomationConfig();
+            if (typeof loadPipelineLogs === 'function') loadPipelineLogs();
+        } else if (currentActiveTab === 'closing_rekening') {
+            if (typeof loadRekeningConfig === 'function') loadRekeningConfig();
+            if (typeof loadRekeningPipelineLogs === 'function') loadRekeningPipelineLogs();
+        } else if (currentActiveTab === 'audit') {
+            if (typeof loadAuditSummary === 'function') loadAuditSummary();
+            if (typeof loadUncontrolledRekening === 'function') loadUncontrolledRekening(1);
+            if (typeof loadTagihanDuplicates === 'function') loadTagihanDuplicates();
+            if (typeof loadAngsuranDuplicates === 'function') loadAngsuranDuplicates();
+            if (typeof loadAnomaliAngsuranAdmin === 'function') loadAnomaliAngsuranAdmin();
+        } else if (currentActiveTab === 'backup') {
+            if (typeof loadBackupData === 'function') loadBackupData();
         }
 
-        alert(`✅ ${json.message}\nSemua modul Sistem Closing kini aktif terhubung ke ${json.label}.`);
+        setDbSwitchStep(3, 'completed', 'Semua data modul tersinkronisasi.');
+        updateDbSwitchProgress(100);
+
+        const titleEl = document.getElementById('db-switch-title');
+        if (titleEl) titleEl.innerHTML = `<span style="color: #34d399;"><i class="ph ph-check-circle"></i> Terhubung ke ${json.label}</span>`;
+
+        await new Promise(r => setTimeout(r, 600));
+        hideDbSwitchLoading();
+
+        showNotification('Database Berhasil Beralih', `Semua modul Sistem Closing kini aktif terhubung ke ${json.label}.`, 'success');
 
     } catch (e) {
-        alert(`❌ Gagal Beralih Server Database:\n${e.message}`);
+        hideDbSwitchLoading();
+        showNotification('Gagal Beralih Database', e.message, 'danger');
+        alert(`❌ Gagal Beralih Server Database:\n\n${e.message}`);
     } finally {
         if (clickedDiagBtn) clickedDiagBtn.disabled = false;
         updateServerSwitcherUI(currentActiveServerKey);

@@ -1798,7 +1798,10 @@ if ($action === 'beli' || $action === 'batal') {
     try {
         $target = strtolower(trim($_POST['target'] ?? $_GET['target'] ?? ''));
 
-        $currentDbPass = array_key_exists('DB_PASS', $env) ? $env['DB_PASS'] : '';
+        $currentDbPass = array_key_exists('DB_PASS', $env) ? (string)$env['DB_PASS'] : 'xyz123';
+        if ($currentDbPass === '' && in_array($target, ['simpam', 'simpadu'])) {
+            $currentDbPass = 'xyz123';
+        }
         $currentDbUser = !empty($env['DB_USER']) ? $env['DB_USER'] : 'root';
 
         $serverPresets = [
@@ -1856,7 +1859,16 @@ if ($action === 'beli' || $action === 'batal') {
             throw new Exception("Gagal terhubung ke {$preset['label']} ({$preset['host']}): " . $pe->getMessage());
         }
 
-        // Tulis konfigurasi baru ke file .env tanpa menghapus konfigurasi lain
+        if (file_exists($envFile) && !is_writable($envFile)) {
+            throw new Exception("File .env terproteksi atau tidak dapat ditulis (Permission Denied).");
+        }
+
+        // Tulis konfigurasi baru ke file .env tanpa menghapus konfigurasi autentikasi
+        $envAuthUser = !empty($env['AUTH_USERNAME']) ? $env['AUTH_USERNAME'] : 'admin';
+        $envAuthPass = !empty($env['AUTH_PASSWORD']) ? $env['AUTH_PASSWORD'] : 'pdamjaya3x';
+        $envAuthPin  = !empty($env['AUTH_PIN']) ? $env['AUTH_PIN'] : '199407';
+        $envTimeout  = !empty($env['SESSION_TIMEOUT_MINUTES']) ? $env['SESSION_TIMEOUT_MINUTES'] : '60';
+
         $envContent = "# Database Configuration\n" .
                       "DB_HOST=" . $preset['host'] . "\n" .
                       "DB_USER=" . $preset['user'] . "\n" .
@@ -1864,10 +1876,10 @@ if ($action === 'beli' || $action === 'batal') {
                       "DB_NAME=" . $preset['name'] . "\n" .
                       "PORT=" . $preset['port'] . "\n\n" .
                       "# Konfigurasi Autentikasi dan Sesi Operator\n" .
-                      "AUTH_USERNAME=" . ($env['AUTH_USERNAME'] ?? 'admin') . "\n" .
-                      "AUTH_PASSWORD=" . ($env['AUTH_PASSWORD'] ?? '') . "\n" .
-                      "AUTH_PIN=" . ($env['AUTH_PIN'] ?? '') . "\n" .
-                      "SESSION_TIMEOUT_MINUTES=" . ($env['SESSION_TIMEOUT_MINUTES'] ?? '60') . "\n";
+                      "AUTH_USERNAME=" . $envAuthUser . "\n" .
+                      "AUTH_PASSWORD=" . $envAuthPass . "\n" .
+                      "AUTH_PIN=" . $envAuthPin . "\n" .
+                      "SESSION_TIMEOUT_MINUTES=" . $envTimeout . "\n";
 
         file_put_contents($envFile, $envContent);
 

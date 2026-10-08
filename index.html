@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=61">
+    <link rel="stylesheet" href="styles.css?v=62">
 </head>
 <body>
     <div class="app-container">
@@ -2120,6 +2120,63 @@
         </div>
     </div>
 
-    <script src="app.js?v=61"></script>
+    <!-- Database Switching Full-Screen Animated Loading Overlay -->
+    <div class="db-switch-overlay" id="db-switch-overlay" style="display: none;">
+        <div class="db-switch-modal">
+            <!-- Node Flow Graphic -->
+            <div class="db-flow-visual">
+                <div class="db-node-card source" id="db-node-source">
+                    <div class="db-node-icon" id="db-source-icon" style="color: #38bdf8;">
+                        <i class="ph ph-database"></i>
+                    </div>
+                    <span class="db-node-label" id="db-source-name">SIMPAM</span>
+                    <span class="db-node-sub" id="db-source-ip">192.168.0.10</span>
+                </div>
+
+                <div class="db-stream-connector">
+                    <div class="db-stream-line"></div>
+                    <span class="db-stream-badge">Migrasi</span>
+                </div>
+
+                <div class="db-node-card target" id="db-node-target">
+                    <div class="db-node-icon" id="db-target-icon" style="color: #a855f7;">
+                        <i class="ph ph-database"></i>
+                    </div>
+                    <span class="db-node-label" id="db-target-name">SIMPADU</span>
+                    <span class="db-node-sub" id="db-target-ip">192.168.8.11</span>
+                </div>
+            </div>
+
+            <!-- Title & Description -->
+            <h3 class="db-switch-title" id="db-switch-title">Beralih Database Server</h3>
+            <p class="db-switch-desc" id="db-switch-desc">
+                Sedang memvalidasi koneksi dan memindahkan target server aktif...
+            </p>
+
+            <!-- Stepper Checklist -->
+            <div class="db-switch-steps">
+                <div class="db-switch-step-item active" id="db-step-1">
+                    <span class="db-step-icon"><i class="ph ph-spinner-gap"></i></span>
+                    <span class="db-step-text" id="db-step-1-text">Menguji konektivitas & respons port 3306...</span>
+                </div>
+                <div class="db-switch-step-item" id="db-step-2">
+                    <span class="db-step-icon"><i class="ph ph-circle"></i></span>
+                    <span class="db-step-text" id="db-step-2-text">Menulis konfigurasi sistem (.env)...</span>
+                </div>
+                <div class="db-switch-step-item" id="db-step-3">
+                    <span class="db-step-icon"><i class="ph ph-circle"></i></span>
+                    <span class="db-step-text" id="db-step-3-text">Inisialisasi ulang sesi & menyinkronkan data modul...</span>
+                </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="db-switch-bar-track">
+                <div class="db-switch-bar-fill" id="db-switch-bar-fill" style="width: 25%;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=62"></script>
 </body>
 </html>
+

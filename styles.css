@@ -2913,6 +2913,289 @@ tr.row-outside-kuota:hover {
     }
 }
 
+/* ==========================================================================
+   Database Switching Full-Screen Loading Overlay
+   ========================================================================== */
+.db-switch-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    background: radial-gradient(circle at center, rgba(15, 23, 42, 0.94) 0%, rgba(5, 8, 16, 0.98) 100%);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    animation: dbOverlayFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes dbOverlayFadeIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.db-switch-modal {
+    width: 100%;
+    max-width: 500px;
+    background: rgba(17, 24, 39, 0.92);
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    border-radius: 20px;
+    padding: 2.2rem 2rem;
+    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8),
+                0 0 40px rgba(99, 102, 241, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.db-switch-modal::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
+    pointer-events: none;
+    animation: dbGlowRotate 12s linear infinite;
+}
+
+@keyframes dbGlowRotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Graphic Node Flow Animation */
+.db-flow-visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    width: 100%;
+    position: relative;
+    z-index: 2;
+}
+
+.db-node-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 14px;
+    padding: 0.75rem 0.9rem;
+    min-width: 110px;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.db-node-card.source {
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.db-node-card.target {
+    border-color: rgba(99, 102, 241, 0.5);
+    background: rgba(99, 102, 241, 0.1);
+    box-shadow: 0 0 25px rgba(99, 102, 241, 0.3);
+}
+
+.db-node-card.target.target-simpam {
+    border-color: rgba(56, 189, 248, 0.6);
+    background: rgba(56, 189, 248, 0.12);
+    box-shadow: 0 0 25px rgba(56, 189, 248, 0.3);
+}
+
+.db-node-card.target.target-simpadu {
+    border-color: rgba(168, 85, 247, 0.6);
+    background: rgba(168, 85, 247, 0.12);
+    box-shadow: 0 0 25px rgba(168, 85, 247, 0.35);
+}
+
+.db-node-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.db-node-card.target .db-node-icon {
+    animation: dbIconPulse 2s infinite ease-in-out;
+}
+
+@keyframes dbIconPulse {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4)); }
+    50% { transform: scale(1.08); filter: drop-shadow(0 0 12px rgba(99, 102, 241, 0.8)); }
+}
+
+.db-node-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #f8fafc;
+}
+
+.db-node-sub {
+    font-size: 0.65rem;
+    color: #94a3b8;
+    font-family: monospace;
+}
+
+/* Stream Connector */
+.db-stream-connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    width: 80px;
+}
+
+.db-stream-line {
+    width: 100%;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+}
+
+.db-stream-line::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, #38bdf8, #a855f7, transparent);
+    animation: dbStreamFlow 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes dbStreamFlow {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+.db-stream-badge {
+    margin-top: 0.4rem;
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #cbd5e1;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+/* Progress Text & Status */
+.db-switch-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0 0 0.35rem 0;
+    letter-spacing: -0.01em;
+    z-index: 2;
+}
+
+.db-switch-desc {
+    font-size: 0.8rem;
+    color: #94a3b8;
+    margin: 0 0 1.35rem 0;
+    z-index: 2;
+    max-width: 400px;
+    line-height: 1.45;
+}
+
+.db-switch-desc strong {
+    color: #e2e8f0;
+}
+
+/* Stepper Checklist */
+.db-switch-steps {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin-bottom: 1.35rem;
+    z-index: 2;
+    text-align: left;
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+}
+
+.db-switch-step-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    font-size: 0.76rem;
+    color: #64748b;
+    transition: all 0.25s ease;
+}
+
+.db-switch-step-item.active {
+    color: #f1f5f9;
+    font-weight: 600;
+}
+
+.db-switch-step-item.completed {
+    color: #34d399;
+}
+
+.db-step-icon {
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+}
+
+.db-switch-step-item.active .db-step-icon {
+    color: #38bdf8;
+    animation: dbStepSpin 1s linear infinite;
+}
+
+@keyframes dbStepSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.db-switch-step-item.completed .db-step-icon {
+    color: #10b981;
+}
+
+/* Progress bar */
+.db-switch-bar-track {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+    z-index: 2;
+}
+
+.db-switch-bar-fill {
+    height: 100%;
+    width: 15%;
+    background: linear-gradient(90deg, #38bdf8, #6366f1, #a855f7);
+    border-radius: 999px;
+    transition: width 0.35s ease;
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.6);
+}
+
+
 
 
 
