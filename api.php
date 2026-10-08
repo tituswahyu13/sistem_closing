@@ -1692,9 +1692,13 @@ if ($action === 'beli' || $action === 'batal') {
             SELECT a.ONLINE, COUNT(*) as jml, SUM(a.JUMLAH) as total
             FROM spd_tagrek a
             WHERE a.REKENING_BULAN = '202608'
-            GROUP BY a.ONLINE
+        // Cek triggers pada pdam dan simpadu
+        $stmtTrig = $pdo->query("
+            SELECT TRIGGER_SCHEMA, TRIGGER_NAME, EVENT_MANIPULATION, EVENT_OBJECT_TABLE, ACTION_STATEMENT
+            FROM information_schema.TRIGGERS
+            WHERE TRIGGER_SCHEMA IN ('pdam', 'simpadu')
         ");
-        $tagrek08Stats = $stmtSampleTagrek08 ? $stmtSampleTagrek08->fetchAll(PDO::FETCH_ASSOC) : [];
+        $triggers = $stmtTrig ? $stmtTrig->fetchAll(PDO::FETCH_ASSOC) : [];
 
         echo json_encode([
             "status" => "success",
@@ -1703,7 +1707,8 @@ if ($action === 'beli' || $action === 'batal') {
             "rekening_stats" => $rekStats,
             "sample_rekening" => $sampleRek,
             "sample_tagrek_202607_online9" => $sampleTagrek07,
-            "tagrek_202608_all_online" => $tagrek08Stats
+            "tagrek_202608_all_online" => $tagrek08Stats,
+            "triggers" => $triggers
         ]);
     } catch (Exception $e) {
         http_response_code(500);
