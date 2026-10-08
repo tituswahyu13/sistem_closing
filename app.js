@@ -614,10 +614,8 @@ function renderTable(data, type) {
         statTotalSub.style.display = 'block';
         statTotalSub.textContent = 'Rekening Lunas Dibeli YKK';
         
-        const totalBayarSemua = currentData.reduce((sum, r) => sum + (parseFloat(r.TOTAL_BAYAR) || 0), 0);
-        statTotalJumlah.textContent = formatRupiah(totalBayarSemua || grandTotal);
-        statTotalJumlahSub.style.display = 'block';
-        statTotalJumlahSub.textContent = `Pokok Air: ${formatRupiah(grandTotal)}`;
+        statTotalJumlah.textContent = formatRupiah(grandTotal);
+        statTotalJumlahSub.style.display = 'none';
         statCardSisa.style.display = 'none';
     } else {
         statTotal.textContent = currentData.length.toLocaleString('id-ID');
