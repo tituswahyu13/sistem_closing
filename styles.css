@@ -2843,15 +2843,12 @@ tr.row-outside-kuota:hover {
     display: flex;
 }
 
-/* Audit Sub-tab Navigation Pill Bar */
-.audit-tab-bar {
-    display: flex;
-    gap: 0.5rem;
-    padding: 0.25rem;
-    background: rgba(15, 23, 42, 0.6);
-    border-radius: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    overflow-x: auto;
+/* Audit KPI Card Active State */
+.stat-card.active-audit-card {
+    border-color: rgba(56, 189, 248, 0.6) !important;
+    background: rgba(30, 41, 59, 0.85) !important;
+    box-shadow: 0 0 16px rgba(56, 189, 248, 0.25) !important;
+    transform: translateY(-2px);
 }
 
 .subtab-btn {

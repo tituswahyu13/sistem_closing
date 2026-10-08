@@ -741,6 +741,7 @@ function switchTab(tabId) {
     } else if (tabId === 'audit') {
         pageTitle.textContent = 'Audit & Validasi Pra-Closing';
         if (budgetPanel) budgetPanel.style.display = 'none';
+        switchAuditSubtab(currentAuditSubtab || 'uncontrolled');
         loadAuditSummary();
         loadUncontrolledRekening(1);
         loadTagihanDuplicates();
@@ -4360,14 +4361,25 @@ let currentAuditSubtab = 'uncontrolled';
 function switchAuditSubtab(subtabId) {
     currentAuditSubtab = subtabId;
     
-    // Toggle active class on buttons
-    document.querySelectorAll('[data-audit-tab]').forEach(btn => {
-        if (btn.getAttribute('data-audit-tab') === subtabId) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
+    // Toggle active state on top KPI cards
+    const cardMap = {
+        'uncontrolled': ['card-kpi-uncontrolled'],
+        'tagihan': ['card-kpi-tagrek', 'card-kpi-tunggak'],
+        'angsuran': ['card-kpi-angsuran'],
+        'anomali_admin': ['card-kpi-anomali-admin']
+    };
+
+    ['card-kpi-uncontrolled', 'card-kpi-tagrek', 'card-kpi-tunggak', 'card-kpi-angsuran', 'card-kpi-anomali-admin'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('active-audit-card');
     });
+
+    if (cardMap[subtabId]) {
+        cardMap[subtabId].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.add('active-audit-card');
+        });
+    }
 
     // Toggle panels
     const panelUncontrolled = document.getElementById('audit-subpanel-uncontrolled');
