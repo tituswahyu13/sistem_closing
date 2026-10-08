@@ -85,6 +85,43 @@ function logUserAudit($pdo, $username, $action, $details = '') {
     }
 }
 
+function getActiveProcessQueryInfo($pdo) {
+    $activeQuery = null;
+    $activeTable = null;
+    $querySnippet = null;
+    $queryTime = 0;
+
+    try {
+        $stmt = $pdo->query("SHOW FULL PROCESSLIST");
+        $processes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($processes as $p) {
+            $info = trim($p['Info'] ?? '');
+            if (!empty($info) 
+                && stripos($info, 'SHOW FULL PROCESSLIST') === false 
+                && stripos($info, 'ykk_config') === false
+                && stripos($info, 'rekening_config') === false
+                && stripos($info, 'pipeline_log') === false
+                && stripos($info, 'information_schema') === false
+            ) {
+                if (preg_match('/(?:FROM|TABLE|INTO|UPDATE|CALL|JOIN)\s+[`\'"]?([a-zA-Z0-9_\.]+)[`\'"]?/i', $info, $matches)) {
+                    $activeTable = $matches[1];
+                }
+                $activeQuery = $info;
+                $queryTime = intval($p['Time'] ?? 0);
+                $querySnippet = substr($info, 0, 300) . (strlen($info) > 300 ? '...' : '');
+                break;
+            }
+        }
+    } catch (Exception $e) {}
+
+    return [
+        'active_query' => $activeQuery,
+        'active_table' => $activeTable,
+        'query_snippet' => $querySnippet,
+        'query_time' => $queryTime
+    ];
+}
+
 function getAuthenticatedUser($sessionTimeoutMinutes) {
     if (empty($_SESSION['auth_user'])) {
         if (!empty($_COOKIE['closing_remember_token'])) {
@@ -1342,43 +1379,6 @@ if ($action === 'beli' || $action === 'batal') {
                 }
             }
         }
-
-function getActiveProcessQueryInfo($pdo) {
-    $activeQuery = null;
-    $activeTable = null;
-    $querySnippet = null;
-    $queryTime = 0;
-
-    try {
-        $stmt = $pdo->query("SHOW FULL PROCESSLIST");
-        $processes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($processes as $p) {
-            $info = trim($p['Info'] ?? '');
-            if (!empty($info) 
-                && stripos($info, 'SHOW FULL PROCESSLIST') === false 
-                && stripos($info, 'ykk_config') === false
-                && stripos($info, 'rekening_config') === false
-                && stripos($info, 'pipeline_log') === false
-                && stripos($info, 'information_schema') === false
-            ) {
-                if (preg_match('/(?:FROM|TABLE|INTO|UPDATE|CALL|JOIN)\s+[`\'"]?([a-zA-Z0-9_\.]+)[`\'"]?/i', $info, $matches)) {
-                    $activeTable = $matches[1];
-                }
-                $activeQuery = $info;
-                $queryTime = intval($p['Time'] ?? 0);
-                $querySnippet = substr($info, 0, 300) . (strlen($info) > 300 ? '...' : '');
-                break;
-            }
-        }
-    } catch (Exception $e) {}
-
-    return [
-        'active_query' => $activeQuery,
-        'active_table' => $activeTable,
-        'query_snippet' => $querySnippet,
-        'query_time' => $queryTime
-    ];
-}
 
         // Cek query aktif di MySQL server HANYA jika pipeline aktif berjalan
         $queryInfo = ['active_query' => null, 'active_table' => null, 'query_snippet' => null, 'query_time' => 0];
