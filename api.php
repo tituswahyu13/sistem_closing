@@ -1678,16 +1678,23 @@ if ($action === 'beli' || $action === 'batal') {
         ");
         $sampleRek = $stmtSampleRek ? $stmtSampleRek->fetchAll(PDO::FETCH_ASSOC) : [];
 
-        // Cek apakah ada spd_tagrek untuk Rumah Ibadah
-        $stmtTagrek = $pdo->query("
-            SELECT a.REKENING_BULAN, a.ONLINE, COUNT(*) as jml, SUM(a.JUMLAH) as total
-            FROM spd_tagrek a
-            WHERE a.STGOL_ID IN ('IB1', 'IB2', 'IB3') OR a.NO_PDAM = '12010151'
-            GROUP BY a.REKENING_BULAN, a.ONLINE
-            ORDER BY a.REKENING_BULAN DESC
-            LIMIT 10
+        // Detail sampel spd_tagrek ONLINE = 9 di 202607
+        $stmtSampleTagrek07 = $pdo->query("
+            SELECT *
+            FROM spd_tagrek
+            WHERE REKENING_BULAN = '202607' AND ONLINE = 9
+            LIMIT 5
         ");
-        $tagrekStats = $stmtTagrek ? $stmtTagrek->fetchAll(PDO::FETCH_ASSOC) : [];
+        $sampleTagrek07 = $stmtSampleTagrek07 ? $stmtSampleTagrek07->fetchAll(PDO::FETCH_ASSOC) : [];
+
+        // Cek juga spd_tagrek untuk 202608
+        $stmtSampleTagrek08 = $pdo->query("
+            SELECT a.ONLINE, COUNT(*) as jml, SUM(a.JUMLAH) as total
+            FROM spd_tagrek a
+            WHERE a.REKENING_BULAN = '202608'
+            GROUP BY a.ONLINE
+        ");
+        $tagrek08Stats = $stmtSampleTagrek08 ? $stmtSampleTagrek08->fetchAll(PDO::FETCH_ASSOC) : [];
 
         echo json_encode([
             "status" => "success",
@@ -1695,7 +1702,8 @@ if ($action === 'beli' || $action === 'batal') {
             "sample_ppob" => $samplePpob,
             "rekening_stats" => $rekStats,
             "sample_rekening" => $sampleRek,
-            "tagrek_stats" => $tagrekStats
+            "sample_tagrek_202607_online9" => $sampleTagrek07,
+            "tagrek_202608_all_online" => $tagrek08Stats
         ]);
     } catch (Exception $e) {
         http_response_code(500);
