@@ -1004,10 +1004,11 @@ function executeClosingRekeningPipeline($params = []) {
 
             // G. Insert ke tabel SPD_REKANG dari BPPI dan PIDENDA (Pengganti CALL insert_rekang agar bebas dari case-sensitivity bug stored procedure)
             $tblRekang = resolvePipelineTableName($pdo, 'spd_rekang');
+            $lastDayNext = intval(date('t', strtotime("{$nextTahun}-{$nextBulan}-01")));
             $rekangParts = [];
             if (checkPipelineTableExists($pdo, 'spd_pidenda')) {
                 $rekangParts[] = "
-                    SELECT NULL, CONCAT('{$nextTahun}-{$nextBulan}-', LPAD(DAY(a.TANGGAL), 2, '0')), a.STLGN_ID, a.NO_PDAM, b.LOKBAY_ID,
+                    SELECT NULL, CONCAT('{$nextTahun}-{$nextBulan}-', LPAD(LEAST(DAY(a.TANGGAL), {$lastDayNext}), 2, '0')), a.STLGN_ID, a.NO_PDAM, b.LOKBAY_ID,
                     IF((a.JUMLAH - a.AKUMBAYAR) >= a.ANGPLAN, a.ANGPLAN, a.JUMLAH - a.AKUMBAYAR) as ANGPLAN, a.JUMLAH, a.AKUMBAYAR, a.XANGSUR, a.XRLANG, 'D', NULL, a.NOBUKTI, NULL, 0,
                     {$userId}, NULL, NULL, NOW(), NOW(), NULL
                     FROM `$tblPidenda` a
@@ -1017,7 +1018,7 @@ function executeClosingRekeningPipeline($params = []) {
             }
             if (checkPipelineTableExists($pdo, 'spd_bppi')) {
                 $rekangParts[] = "
-                    SELECT NULL, CONCAT('{$nextTahun}-{$nextBulan}-', LPAD(DAY(a.TANGGAL), 2, '0')), IFNULL(a.STLGN_ID, b.ID) as STLGN_ID, a.NO_PDAM, b.LOKBAY_ID,
+                    SELECT NULL, CONCAT('{$nextTahun}-{$nextBulan}-', LPAD(LEAST(DAY(a.TANGGAL), {$lastDayNext}), 2, '0')), IFNULL(a.STLGN_ID, b.ID) as STLGN_ID, a.NO_PDAM, b.LOKBAY_ID,
                     IF((a.JUMLAH - a.AKUMBAYAR) >= a.ANGPLAN, a.ANGPLAN, a.JUMLAH - a.AKUMBAYAR) as REALISASI, a.JUMLAH, a.AKUMBAYAR, a.XANGSUR, a.XRANGSUR, 'B', NULL, a.KODE, NULL, 0,
                     {$userId}, NULL, NULL, NOW(), NOW(), NULL
                     FROM `$tblBppi` a
@@ -1035,7 +1036,6 @@ function executeClosingRekeningPipeline($params = []) {
                 $jmlRekang = $stmtInsertRekang->rowCount();
                 $log("   - Insert ke $tblRekang dari BPPI & PIDENDA: $jmlRekang baris berhasil digenerate.");
             } else {
-                $lastDayNext = date('t', strtotime("{$nextTahun}-{$nextBulan}-01"));
                 $tglAkhirBulan = "{$nextTahun}-{$nextBulan}-{$lastDayNext}";
                 try {
                     $pdo->exec("CALL insert_rekang('{$tglAkhirBulan}', NULL, '{$periodeBerjalan}')");
