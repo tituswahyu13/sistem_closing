@@ -2428,11 +2428,16 @@ async function loadPipelineLogs() {
 
                 let highestStep = -1;
                 let hasRunning = false;
-                let hasFailed = false;
+                let hasFailed = (latestBatch.status === 'FAILED');
                 let step1IsRunning = false;
+                let failedErrorMessage = '';
 
                 latestBatch.steps.forEach(st => {
                     const stepNum = parseInt(st.step, 10);
+                    if (st.status === 'FAILED' || stepNum === 99) {
+                        hasFailed = true;
+                        if (st.pesan) failedErrorMessage = st.pesan;
+                    }
                     if (stepNum >= 0 && stepNum <= 5) {
                         const dur = st.durasi_detik ? `${st.durasi_detik}s` : '0s';
                         const timeStr = st.waktu_mulai ? st.waktu_mulai.split(' ')[1] : '';
@@ -2442,11 +2447,30 @@ async function loadPipelineLogs() {
                             hasRunning = true;
                             if (stepNum === 1) step1IsRunning = true;
                         }
-                        if (st.status === 'FAILED') hasFailed = true;
                     }
                 });
 
-                if (latestBatch.status === 'SUCCESS' && latestBatch.steps.length >= 6) {
+                if (hasFailed || latestBatch.status === 'FAILED') {
+                    if (highestStep >= 0) {
+                        updateStepCardUI(highestStep, 'FAILED', 'Gagal');
+                    }
+                    if (pipelineLiveIndicator) {
+                        pipelineLiveIndicator.textContent = 'FAILED';
+                        pipelineLiveIndicator.className = 'badge badge-danger';
+                    }
+                    if (pipelineStatusBadge) {
+                        pipelineStatusBadge.innerHTML = '<i class="ph ph-warning"></i> GAGAL';
+                        pipelineStatusBadge.className = 'badge badge-danger';
+                    }
+                    const errShort = failedErrorMessage ? `: ${failedErrorMessage}` : '';
+                    updatePipelineProgressUI(highestStep >= 0 ? highestStep : 0, 'FAILED', `Gagal pada ${stepNamesDef[highestStep] || 'Tahap ' + highestStep}${errShort}`);
+                    stopPipelineStopwatch('Gagal');
+
+                    const queryTicker = document.getElementById('pipeline-query-ticker');
+                    if (queryTicker && failedErrorMessage) {
+                        queryTicker.innerHTML = `<span style="color: #f87171; font-weight: 600;"><i class="ph ph-x-circle"></i> ${failedErrorMessage}</span>`;
+                    }
+                } else if (latestBatch.status === 'SUCCESS' && latestBatch.steps.length >= 6) {
                     updatePipelineProgressUI(5, 'SUCCESS', 'Master Pipeline Terakhir Berhasil Selesai Penuh (6/6 Tahap)', true);
                     if (pipelineLiveIndicator) {
                         pipelineLiveIndicator.textContent = 'COMPLETED';
@@ -2481,17 +2505,6 @@ async function loadPipelineLogs() {
                         }
                         startPipelineStopwatch(startMs);
                     }
-                } else if (hasFailed || latestBatch.status === 'FAILED') {
-                    if (pipelineLiveIndicator) {
-                        pipelineLiveIndicator.textContent = 'FAILED';
-                        pipelineLiveIndicator.className = 'badge badge-danger';
-                    }
-                    if (pipelineStatusBadge) {
-                        pipelineStatusBadge.innerHTML = '<i class="ph ph-warning"></i> GAGAL';
-                        pipelineStatusBadge.className = 'badge badge-danger';
-                    }
-                    updatePipelineProgressUI(highestStep, 'FAILED', `Gagal pada ${stepNamesDef[highestStep] || 'Tahap ' + highestStep}`);
-                    stopPipelineStopwatch('Gagal');
                 }
 
                 // Tampilkan Live Stream Byte Counter HANYA jika Tahap 1 sedang berstatus RUNNING
@@ -3108,11 +3121,16 @@ async function loadRekeningPipelineLogs() {
 
                 let highestStep = -1;
                 let hasRunning = false;
-                let hasFailed = false;
+                let hasFailed = (latestBatch.status === 'FAILED');
                 let step1IsRunning = false;
+                let failedErrorMessage = '';
 
                 latestBatch.steps.forEach(st => {
                     const stepNum = parseInt(st.step, 10);
+                    if (st.status === 'FAILED' || stepNum === 99) {
+                        hasFailed = true;
+                        if (st.pesan) failedErrorMessage = st.pesan;
+                    }
                     if (stepNum >= 0 && stepNum <= 5) {
                         const dur = st.durasi_detik ? `${st.durasi_detik}s` : '0s';
                         const timeStr = st.waktu_mulai ? st.waktu_mulai.split(' ')[1] : '';
@@ -3122,11 +3140,30 @@ async function loadRekeningPipelineLogs() {
                             hasRunning = true;
                             if (stepNum === 1) step1IsRunning = true;
                         }
-                        if (st.status === 'FAILED') hasFailed = true;
                     }
                 });
 
-                if (latestBatch.status === 'SUCCESS' && latestBatch.steps.length >= 6) {
+                if (hasFailed || latestBatch.status === 'FAILED') {
+                    if (highestStep >= 0) {
+                        updateRekeningStepCardUI(highestStep, 'FAILED', 'Gagal');
+                    }
+                    if (pipelineRekeningLiveIndicator) {
+                        pipelineRekeningLiveIndicator.textContent = 'FAILED';
+                        pipelineRekeningLiveIndicator.className = 'badge badge-danger';
+                    }
+                    if (pipelineRekeningStatusBadge) {
+                        pipelineRekeningStatusBadge.innerHTML = '<i class="ph ph-warning"></i> GAGAL';
+                        pipelineRekeningStatusBadge.className = 'badge badge-danger';
+                    }
+                    const errShort = failedErrorMessage ? `: ${failedErrorMessage}` : '';
+                    updateRekeningProgressUI(highestStep >= 0 ? highestStep : 0, 'FAILED', `Gagal pada ${rekStepNamesDef[highestStep] || 'Tahap ' + highestStep}${errShort}`);
+                    stopRekeningStopwatch('Gagal');
+
+                    const queryTicker = document.getElementById('pipeline-rekening-query-ticker');
+                    if (queryTicker && failedErrorMessage) {
+                        queryTicker.innerHTML = `<span style="color: #f87171; font-weight: 600;"><i class="ph ph-x-circle"></i> ${failedErrorMessage}</span>`;
+                    }
+                } else if (latestBatch.status === 'SUCCESS' && latestBatch.steps.length >= 6) {
                     updateRekeningProgressUI(5, 'SUCCESS', 'Closing Rekening Terakhir Berhasil Selesai Penuh (6/6 Tahap)', true);
                     if (pipelineRekeningLiveIndicator) {
                         pipelineRekeningLiveIndicator.textContent = 'COMPLETED';
@@ -3161,17 +3198,6 @@ async function loadRekeningPipelineLogs() {
                         }
                         startRekeningStopwatch(startMs);
                     }
-                } else if (hasFailed || latestBatch.status === 'FAILED') {
-                    if (pipelineRekeningLiveIndicator) {
-                        pipelineRekeningLiveIndicator.textContent = 'FAILED';
-                        pipelineRekeningLiveIndicator.className = 'badge badge-danger';
-                    }
-                    if (pipelineRekeningStatusBadge) {
-                        pipelineRekeningStatusBadge.innerHTML = '<i class="ph ph-warning"></i> GAGAL';
-                        pipelineRekeningStatusBadge.className = 'badge badge-danger';
-                    }
-                    updateRekeningProgressUI(highestStep, 'FAILED', `Gagal pada ${rekStepNamesDef[highestStep] || 'Tahap ' + highestStep}`);
-                    stopRekeningStopwatch('Gagal');
                 }
 
                 if (step1IsRunning && json.active_backup && json.active_backup.is_writing) {

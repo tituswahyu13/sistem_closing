@@ -621,6 +621,10 @@ function executeMasterPipeline($options = []) {
 
         // Catat error step
         if ($pdo && isset($periodeBerjalan)) {
+            try {
+                $stmtFail = $pdo->prepare("UPDATE pipeline_log SET status = 'FAILED', waktu_selesai = NOW(), pesan = :pesan WHERE batch_id = :bid AND status = 'RUNNING'");
+                $stmtFail->execute(['pesan' => $e->getMessage(), 'bid' => $batchId]);
+            } catch (Exception $ex) {}
             recordPipelineStep($pdo, $batchId, $periodeBerjalan, 99, "Pipeline Error", 'FAILED', date('Y-m-d H:i:s'), date('Y-m-d H:i:s'), $e->getMessage());
         }
     }
@@ -1270,6 +1274,10 @@ function executeClosingRekeningPipeline($params = []) {
         $log("\n[FATAL ERROR] PIPELINE CLOSING REKENING DIHENTIKAN: " . $e->getMessage());
 
         if ($pdo && isset($periodeBerjalan)) {
+            try {
+                $stmtFail = $pdo->prepare("UPDATE pipeline_log SET status = 'FAILED', waktu_selesai = NOW(), pesan = :pesan WHERE batch_id = :bid AND status = 'RUNNING'");
+                $stmtFail->execute(['pesan' => $e->getMessage(), 'bid' => $batchId]);
+            } catch (Exception $ex) {}
             recordPipelineStep($pdo, $batchId, $periodeBerjalan, 99, "Pipeline Error", 'FAILED', date('Y-m-d H:i:s'), date('Y-m-d H:i:s'), $e->getMessage());
         }
     }

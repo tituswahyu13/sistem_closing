@@ -1221,7 +1221,6 @@ if ($action === 'beli' || $action === 'batal') {
 
         // Group by batch_id
         $batches = [];
-        $hasActiveBatch = false;
         foreach ($logs as $row) {
             $bId = $row['batch_id'];
             if (!isset($batches[$bId])) {
@@ -1233,14 +1232,27 @@ if ($action === 'beli' || $action === 'batal') {
                     'steps' => []
                 ];
             }
-            if ($row['status'] === 'FAILED') {
-                $batches[$bId]['status'] = 'FAILED';
-            } elseif ($row['status'] === 'RUNNING') {
-                $batches[$bId]['status'] = 'RUNNING';
-                $hasActiveBatch = true;
-            }
             $batches[$bId]['steps'][] = $row;
         }
+
+        $hasActiveBatch = false;
+        foreach ($batches as $bId => &$bInfo) {
+            $hasFail = false;
+            $hasRun = false;
+            foreach ($bInfo['steps'] as $st) {
+                if ($st['status'] === 'FAILED' || intval($st['step']) === 99) $hasFail = true;
+                if ($st['status'] === 'RUNNING') $hasRun = true;
+            }
+            if ($hasFail) {
+                $bInfo['status'] = 'FAILED';
+            } elseif ($hasRun) {
+                $bInfo['status'] = 'RUNNING';
+                $hasActiveBatch = true;
+            } else {
+                $bInfo['status'] = 'SUCCESS';
+            }
+        }
+        unset($bInfo);
 
         // Cek progres realtime pencadangan database (Tahap 1)
         $activeBackup = null;
@@ -1367,7 +1379,6 @@ if ($action === 'beli' || $action === 'batal') {
 
         // Group by batch_id
         $batches = [];
-        $hasActiveBatch = false;
         foreach ($logs as $row) {
             $bId = $row['batch_id'];
             if (!isset($batches[$bId])) {
@@ -1379,14 +1390,27 @@ if ($action === 'beli' || $action === 'batal') {
                     'steps' => []
                 ];
             }
-            if ($row['status'] === 'FAILED') {
-                $batches[$bId]['status'] = 'FAILED';
-            } elseif ($row['status'] === 'RUNNING') {
-                $batches[$bId]['status'] = 'RUNNING';
-                $hasActiveBatch = true;
-            }
             $batches[$bId]['steps'][] = $row;
         }
+
+        $hasActiveBatch = false;
+        foreach ($batches as $bId => &$bInfo) {
+            $hasFail = false;
+            $hasRun = false;
+            foreach ($bInfo['steps'] as $st) {
+                if ($st['status'] === 'FAILED' || intval($st['step']) === 99) $hasFail = true;
+                if ($st['status'] === 'RUNNING') $hasRun = true;
+            }
+            if ($hasFail) {
+                $bInfo['status'] = 'FAILED';
+            } elseif ($hasRun) {
+                $bInfo['status'] = 'RUNNING';
+                $hasActiveBatch = true;
+            } else {
+                $bInfo['status'] = 'SUCCESS';
+            }
+        }
+        unset($bInfo);
 
         // Cek progres realtime pencadangan database closing rekening (Tahap 1)
         $activeBackup = null;
