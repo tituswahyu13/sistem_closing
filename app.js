@@ -3527,7 +3527,7 @@ async function loadServerMetrics(showFeedback = false) {
         // Storage / Disk
         if (json.disk) {
             if (diskFreeEl) diskFreeEl.textContent = `${json.disk.free_gb} GB`;
-            if (diskSubEl) diskSubEl.textContent = `Terpakai: ${json.disk.used_gb} GB dari ${json.disk.total_gb} GB (${json.disk.percent}%)`;
+            if (diskSubEl) diskSubEl.textContent = `Terpakai: ${json.disk.used_gb} GB (${json.disk.percent}%)`;
             if (diskFillEl) {
                 diskFillEl.style.width = `${json.disk.percent}%`;
                 diskFillEl.className = `sidebar-progress-fill ${json.disk.status_color || ''}`;

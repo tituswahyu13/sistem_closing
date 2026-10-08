@@ -1786,8 +1786,8 @@ if ($action === 'beli' || $action === 'batal') {
             "network" => [
                 "rx_mb" => $rxMb,
                 "tx_mb" => $txMb,
-                "rx_formatted" => $rxMb > 1024 ? round($rxMb / 1024, 2) . " GB" : $rxMb . " MB",
-                "tx_formatted" => $txMb > 1024 ? round($txMb / 1024, 2) . " GB" : $txMb . " MB"
+                "rx_formatted" => $rxMb >= 1024 ? round($rxMb / 1024, 1) . " GB" : round($rxMb, 1) . " MB",
+                "tx_formatted" => $txMb >= 1024 ? round($txMb / 1024, 1) . " GB" : round($txMb, 1) . " MB"
             ]
         ]);
     } catch (Exception $e) {
