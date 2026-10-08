@@ -1291,25 +1291,47 @@ if ($action === 'beli' || $action === 'batal') {
             }
         }
 
-        // Cek query aktif di MySQL server HANYA jika pipeline aktif berjalan
-        $activeQuery = null;
-        $activeTable = null;
-        $querySnippet = null;
+function getActiveProcessQueryInfo($pdo) {
+    $activeQuery = null;
+    $activeTable = null;
+    $querySnippet = null;
+    $queryTime = 0;
 
-        if ($hasActiveBatch) {
-            $stmt = $pdo->query("SHOW FULL PROCESSLIST");
-            $processes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            foreach ($processes as $p) {
-                $info = trim($p['Info'] ?? '');
-                if (!empty($info) && stripos($info, 'SHOW FULL PROCESSLIST') === false && stripos($info, 'ykk_config') === false) {
-                    if (preg_match('/(?:FROM|TABLE|INTO|UPDATE|CALL)\s+[`\'"]?([a-zA-Z0-9_\.]+)[`\'"]?/i', $info, $matches)) {
-                        $activeTable = $matches[1];
-                    }
-                    $activeQuery = $info;
-                    $querySnippet = substr($info, 0, 140) . (strlen($info) > 140 ? '...' : '');
-                    break;
+    try {
+        $stmt = $pdo->query("SHOW FULL PROCESSLIST");
+        $processes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($processes as $p) {
+            $info = trim($p['Info'] ?? '');
+            if (!empty($info) 
+                && stripos($info, 'SHOW FULL PROCESSLIST') === false 
+                && stripos($info, 'ykk_config') === false
+                && stripos($info, 'rekening_config') === false
+                && stripos($info, 'pipeline_log') === false
+                && stripos($info, 'information_schema') === false
+            ) {
+                if (preg_match('/(?:FROM|TABLE|INTO|UPDATE|CALL|JOIN)\s+[`\'"]?([a-zA-Z0-9_\.]+)[`\'"]?/i', $info, $matches)) {
+                    $activeTable = $matches[1];
                 }
+                $activeQuery = $info;
+                $queryTime = intval($p['Time'] ?? 0);
+                $querySnippet = substr($info, 0, 300) . (strlen($info) > 300 ? '...' : '');
+                break;
             }
+        }
+    } catch (Exception $e) {}
+
+    return [
+        'active_query' => $activeQuery,
+        'active_table' => $activeTable,
+        'query_snippet' => $querySnippet,
+        'query_time' => $queryTime
+    ];
+}
+
+        // Cek query aktif di MySQL server HANYA jika pipeline aktif berjalan
+        $queryInfo = ['active_query' => null, 'active_table' => null, 'query_snippet' => null, 'query_time' => 0];
+        if ($hasActiveBatch) {
+            $queryInfo = getActiveProcessQueryInfo($pdo);
         }
 
         echo json_encode([
@@ -1317,8 +1339,10 @@ if ($action === 'beli' || $action === 'batal') {
             "batches" => array_values($batches),
             "raw_logs" => $logs,
             "active_backup" => $activeBackup,
-            "active_table" => $activeTable,
-            "query_snippet" => $querySnippet
+            "active_table" => $queryInfo['active_table'],
+            "active_query" => $queryInfo['active_query'],
+            "query_snippet" => $queryInfo['query_snippet'],
+            "query_time" => $queryInfo['query_time']
         ]);
     } catch (Exception $e) {
         http_response_code(500);
@@ -1441,11 +1465,21 @@ if ($action === 'beli' || $action === 'batal') {
             }
         }
 
+        // Cek query aktif di MySQL server HANYA jika pipeline aktif berjalan
+        $queryInfo = ['active_query' => null, 'active_table' => null, 'query_snippet' => null, 'query_time' => 0];
+        if ($hasActiveBatch) {
+            $queryInfo = getActiveProcessQueryInfo($pdo);
+        }
+
         echo json_encode([
             "status" => "success",
             "batches" => array_values($batches),
             "raw_logs" => $logs,
-            "active_backup" => $activeBackup
+            "active_backup" => $activeBackup,
+            "active_table" => $queryInfo['active_table'],
+            "active_query" => $queryInfo['active_query'],
+            "query_snippet" => $queryInfo['query_snippet'],
+            "query_time" => $queryInfo['query_time']
         ]);
     } catch (Exception $e) {
         http_response_code(500);

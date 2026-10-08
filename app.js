@@ -2524,15 +2524,30 @@ async function loadPipelineLogs() {
                 // Update Live SQL Query Ticker
                 const pipelineQueryTicker = document.getElementById('pipeline-query-ticker');
                 const pipelineTableBadge = document.getElementById('pipeline-active-table-badge');
-                if (pipelineTableBadge && json.active_table) {
-                    pipelineTableBadge.textContent = `Tabel: ${json.active_table}`;
+                if (pipelineTableBadge) {
+                    if (json.active_table) {
+                        pipelineTableBadge.textContent = `Tabel: ${json.active_table}`;
+                        pipelineTableBadge.className = 'badge badge-info';
+                    } else if (latestBatch.status === 'RUNNING') {
+                        pipelineTableBadge.textContent = 'Memproses...';
+                        pipelineTableBadge.className = 'badge badge-warning';
+                    } else if (latestBatch.status === 'SUCCESS') {
+                        pipelineTableBadge.textContent = 'Selesai';
+                        pipelineTableBadge.className = 'badge badge-success';
+                    }
                 }
                 if (pipelineQueryTicker) {
-                    if (json.query_snippet) {
-                        pipelineQueryTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}] ${json.query_snippet}`;
+                    if (json.active_query || json.query_snippet) {
+                        const qTime = json.query_time ? ` (Durasi: ${json.query_time}s)` : '';
+                        const qText = json.active_query || json.query_snippet;
+                        pipelineQueryTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}]${qTime} ${qText}`;
+                    } else if (latestBatch.status === 'RUNNING') {
+                        const runningStep = latestBatch.steps ? (latestBatch.steps.find(st => st.status === 'RUNNING') || latestBatch.steps[latestBatch.steps.length - 1]) : null;
+                        if (runningStep && runningStep.pesan) {
+                            pipelineQueryTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}] ${runningStep.pesan}`;
+                        }
                     } else if (latestBatch.status === 'SUCCESS') {
                         pipelineQueryTicker.textContent = 'Semua operasi SQL 6 tahap pipeline telah selesai dengan sukses.';
-                        if (pipelineTableBadge) pipelineTableBadge.textContent = 'Selesai';
                     }
                 }
             }
@@ -2600,11 +2615,26 @@ async function runMasterPipeline() {
                 // Update ticker during active execution
                 const pipelineQueryTicker = document.getElementById('pipeline-query-ticker');
                 const pipelineTableBadge = document.getElementById('pipeline-active-table-badge');
-                if (pipelineTableBadge && json.active_table) {
-                    pipelineTableBadge.textContent = `Tabel: ${json.active_table}`;
+                if (pipelineTableBadge) {
+                    if (json.active_table) {
+                        pipelineTableBadge.textContent = `Tabel: ${json.active_table}`;
+                        pipelineTableBadge.className = 'badge badge-info';
+                    } else {
+                        pipelineTableBadge.textContent = 'Memproses...';
+                        pipelineTableBadge.className = 'badge badge-warning';
+                    }
                 }
-                if (pipelineQueryTicker && json.query_snippet) {
-                    pipelineQueryTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}] ${json.query_snippet}`;
+                if (pipelineQueryTicker) {
+                    if (json.active_query || json.query_snippet) {
+                        const qTime = json.query_time ? ` (Durasi: ${json.query_time}s)` : '';
+                        const qText = json.active_query || json.query_snippet;
+                        pipelineQueryTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}]${qTime} ${qText}`;
+                    } else if (cur && cur.steps) {
+                        const runningStep = cur.steps.find(st => st.status === 'RUNNING') || cur.steps[cur.steps.length - 1];
+                        if (runningStep && runningStep.pesan) {
+                            pipelineQueryTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}] ${runningStep.pesan}`;
+                        }
+                    }
                 }
             }
         } catch (e) {
@@ -3215,15 +3245,30 @@ async function loadRekeningPipelineLogs() {
 
                 const queryTicker = document.getElementById('pipeline-rekening-query-ticker');
                 const tableBadge = document.getElementById('pipeline-rekening-active-table-badge');
-                if (tableBadge && json.active_table) {
-                    tableBadge.textContent = `Tabel: ${json.active_table}`;
+                if (tableBadge) {
+                    if (json.active_table) {
+                        tableBadge.textContent = `Tabel: ${json.active_table}`;
+                        tableBadge.className = 'badge badge-info';
+                    } else if (latestBatch.status === 'RUNNING') {
+                        tableBadge.textContent = 'Memproses...';
+                        tableBadge.className = 'badge badge-warning';
+                    } else if (latestBatch.status === 'SUCCESS') {
+                        tableBadge.textContent = 'Selesai';
+                        tableBadge.className = 'badge badge-success';
+                    }
                 }
                 if (queryTicker) {
-                    if (json.query_snippet) {
-                        queryTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}] ${json.query_snippet}`;
+                    if (json.active_query || json.query_snippet) {
+                        const qTime = json.query_time ? ` (Durasi: ${json.query_time}s)` : '';
+                        const qText = json.active_query || json.query_snippet;
+                        queryTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}]${qTime} ${qText}`;
+                    } else if (latestBatch.status === 'RUNNING') {
+                        const runningStep = latestBatch.steps ? (latestBatch.steps.find(st => st.status === 'RUNNING') || latestBatch.steps[latestBatch.steps.length - 1]) : null;
+                        if (runningStep && runningStep.pesan) {
+                            queryTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}] ${runningStep.pesan}`;
+                        }
                     } else if (latestBatch.status === 'SUCCESS') {
                         queryTicker.textContent = 'Semua operasi SQL 6 tahap closing rekening telah selesai dengan sukses.';
-                        if (tableBadge) tableBadge.textContent = 'Selesai';
                     }
                 }
             }
@@ -3291,11 +3336,26 @@ async function runClosingRekeningPipeline() {
 
                 const queryTicker = document.getElementById('pipeline-rekening-query-ticker');
                 const tableBadge = document.getElementById('pipeline-rekening-active-table-badge');
-                if (tableBadge && json.active_table) {
-                    tableBadge.textContent = `Tabel: ${json.active_table}`;
+                if (tableBadge) {
+                    if (json.active_table) {
+                        tableBadge.textContent = `Tabel: ${json.active_table}`;
+                        tableBadge.className = 'badge badge-info';
+                    } else {
+                        tableBadge.textContent = 'Memproses...';
+                        tableBadge.className = 'badge badge-warning';
+                    }
                 }
-                if (queryTicker && json.query_snippet) {
-                    queryTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}] ${json.query_snippet}`;
+                if (queryTicker) {
+                    if (json.active_query || json.query_snippet) {
+                        const qTime = json.query_time ? ` (Durasi: ${json.query_time}s)` : '';
+                        const qText = json.active_query || json.query_snippet;
+                        queryTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}]${qTime} ${qText}`;
+                    } else if (cur && cur.steps) {
+                        const runningStep = cur.steps.find(st => st.status === 'RUNNING') || cur.steps[cur.steps.length - 1];
+                        if (runningStep && runningStep.pesan) {
+                            queryTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}] ${runningStep.pesan}`;
+                        }
+                    }
                 }
             }
         } catch (e) {

@@ -754,6 +754,7 @@ function executeClosingRekeningPipeline($params = []) {
         recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start);
 
         // 1. Cek apakah masih ada rekening yang belum dikontrol (IS_CTRL = 0)
+        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Sedang validasi kontrol meter (IS_CTRL = 0)...');
         $stmtCtrl = $pdo->prepare("
             SELECT COUNT(*) AS jumlah 
             FROM spd_rekening
@@ -794,6 +795,7 @@ function executeClosingRekeningPipeline($params = []) {
 
         try {
             // A. Update SPD_ANGSURAN
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Mengeksekusi [Query 1/6]: UPDATE spd_angsuran (XRLANG & AKUMBAYAR)...');
             $sqlAngsuran = "
                 UPDATE spd_angsuran a, (
                     SELECT a.ID, a.STLGN_ID, a.KRITERIA,
@@ -817,6 +819,7 @@ function executeClosingRekeningPipeline($params = []) {
 
             // B. Generate & Insert Rekening Periode Baru (spd_rekening)
             // Hapus data periode baru jika sebelumnya pernah terbuat sebagian untuk idempotensi
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Mengeksekusi [Query 2/6]: INSERT INTO spd_rekening periode baru ' . $nextPeriode . ' (kalkulasi rata-rata meter)...');
             $pdo->prepare("DELETE FROM spd_rekening WHERE PERIODE = :next_periode")->execute(['next_periode' => $nextPeriode]);
 
             $sqlInsertRekening = "
@@ -868,6 +871,7 @@ function executeClosingRekeningPipeline($params = []) {
             $log("   - Generate spd_rekening Periode Baru ($nextPeriode): $jmlRekeningBaru rekening berhasil digenerate.");
 
             // C. Update Status Periode Lama (IS_TUTUP = 1) dan Tambah Periode Baru di spd_periode
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Mengeksekusi [Query 3/6]: UPDATE spd_periode (Tutup ' . $periodeBerjalan . ' & buka ' . $nextPeriode . ')...');
             $stmtTutupPeriode = $pdo->prepare("
                 UPDATE spd_periode 
                 SET IS_TUTUP = 1, TIME_TUTUP = NOW() 
@@ -900,6 +904,7 @@ function executeClosingRekeningPipeline($params = []) {
             $tblPidenda = resolvePipelineTableName($pdo, 'spd_pidenda');
 
             if (checkPipelineTableExists($pdo, 'spd_bppi')) {
+                recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Mengeksekusi [Query 4/6]: UPDATE ' . $tblBppi . ' (Angsuran BPPI)...');
                 $sqlBppi = "
                     UPDATE `$tblBppi` a, (
                         SELECT a.ID, b.ID as STLGN_ID, a.TANGGAL,
@@ -924,6 +929,7 @@ function executeClosingRekeningPipeline($params = []) {
 
             // E. Update PIDENDA (jika tabel ada)
             if (checkPipelineTableExists($pdo, 'spd_pidenda')) {
+                recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Mengeksekusi [Query 5/6]: UPDATE ' . $tblPidenda . ' (Piutang Denda)...');
                 $sqlPidenda = "
                     UPDATE `$tblPidenda` a, (
                         SELECT a.ID, a.STLGN_ID, a.TANGGAL, 
@@ -972,6 +978,7 @@ function executeClosingRekeningPipeline($params = []) {
             }
 
             if (!empty($unionParts)) {
+                recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Mengeksekusi [Query 6/6]: UPDATE NON_AIR pada ' . $tblRekening . ' periode baru...');
                 $unionSql = implode(" UNION ALL ", $unionParts);
                 $sqlNonAir = "
                     UPDATE `$tblRekening` a, (
@@ -998,17 +1005,20 @@ function executeClosingRekeningPipeline($params = []) {
             // G. Panggil Stored Procedure insert_rekang
             $lastDayNext = date('t', strtotime("{$nextTahun}-{$nextBulan}-01"));
             $tglAkhirBulan = "{$nextTahun}-{$nextBulan}-{$lastDayNext}";
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Mengeksekusi Procedure: CALL insert_rekang(\'' . $tglAkhirBulan . '\', NULL, \'' . $periodeBerjalan . '\')...');
             $log("   - Menjalankan Procedure CALL insert_rekang('$tglAkhirBulan', NULL, '$periodeBerjalan')...");
             $pdo->exec("CALL insert_rekang('{$tglAkhirBulan}', NULL, '{$periodeBerjalan}')");
             $log("   - Procedure insert_rekang berhasil dieksekusi.");
 
             // H. Update SPD_REKENING periode sebelumnya: Merubah IS_TUTUPMETER menjadi 1
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Mengeksekusi UPDATE spd_rekening SET IS_TUTUPMETER = 1...');
             $stmtTutupMeter = $pdo->prepare("UPDATE spd_rekening SET IS_TUTUPMETER = 1 WHERE PERIODE = :cur_periode");
             $stmtTutupMeter->execute(['cur_periode' => $periodeBerjalan]);
             $jmlTutupMeter = $stmtTutupMeter->rowCount();
             $log("   - Update IS_TUTUPMETER = 1 pada spd_rekening ($periodeBerjalan): $jmlTutupMeter baris.");
 
             // I. Hitung Rekapitulasi Akhir
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Menghitung rekapitulasi akhir transaksi closing rekening...');
             $stmtRekap = $pdo->prepare("
                 SELECT 
                     COUNT(STLGN_ID) as jml_pelanggan,
@@ -1059,10 +1069,12 @@ function executeClosingRekeningPipeline($params = []) {
 
         try {
             // 1. TRUNCATE tabel pdam.ppob
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start, null, 'Mengeksekusi [Query 1/4]: TRUNCATE pdam.ppob...');
             $pdo->exec("TRUNCATE `pdam`.`ppob`");
             $log("   - TRUNCATE `pdam`.`ppob` berhasil.");
 
             // 2. Insert Tagihan Berjalan ke pdam.ppob
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start, null, 'Mengeksekusi [Query 2/4]: INSERT INTO pdam.ppob (Tagihan Rekening Aktif ' . $periodeBerjalan . ')...');
             $sqlPpobTagihan = "
                 INSERT INTO `pdam`.ppob
                 SELECT a.NO_PDAM, b.NAMA, b.ALAMAT, concat(c.KETERANGAN, ' (', a.STGOL_ID, ')') AS GOL,
@@ -1093,6 +1105,7 @@ function executeClosingRekeningPipeline($params = []) {
             $log("   - Insert Tagihan Rekening ke `pdam`.`ppob`: $jmlPpobTagihan baris.");
 
             // 3. Insert Tunggakan ke pdam.ppob
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start, null, 'Mengeksekusi [Query 3/4]: INSERT INTO pdam.ppob (Tunggakan Rekening)...');
             $sqlPpobTunggakan = "
                 INSERT INTO `pdam`.ppob
                 SELECT a.NO_PDAM, b.NAMA, b.ALAMAT,
@@ -1239,7 +1252,7 @@ function executeClosingRekeningPipeline($params = []) {
         $step4Name = "Tahap 4: Pelunasan Rekening Rumah Ibadah";
         $log("\n>>> Menjalankan $step4Name...");
         $t4_start = date('Y-m-d H:i:s');
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 4, $step4Name, 'RUNNING', $t4_start);
+        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 4, $step4Name, 'RUNNING', $t4_start, null, 'Mengeksekusi UPDATE pdam.ppob SET FLAG = 9 (Pelunasan Rumah Ibadah)...');
 
         try {
             $sqlRumahIbadah = "
