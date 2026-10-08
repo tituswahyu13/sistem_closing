@@ -1002,13 +1002,48 @@ function executeClosingRekeningPipeline($params = []) {
                 $log("   - Update NON_AIR: Tidak ada tabel angsuran BPPI/PIDENDA (dilewati).");
             }
 
-            // G. Panggil Stored Procedure insert_rekang
-            $lastDayNext = date('t', strtotime("{$nextTahun}-{$nextBulan}-01"));
-            $tglAkhirBulan = "{$nextTahun}-{$nextBulan}-{$lastDayNext}";
-            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Mengeksekusi Procedure: CALL insert_rekang(\'' . $tglAkhirBulan . '\', NULL, \'' . $periodeBerjalan . '\')...');
-            $log("   - Menjalankan Procedure CALL insert_rekang('$tglAkhirBulan', NULL, '$periodeBerjalan')...");
-            $pdo->exec("CALL insert_rekang('{$tglAkhirBulan}', NULL, '{$periodeBerjalan}')");
-            $log("   - Procedure insert_rekang berhasil dieksekusi.");
+            // G. Insert ke tabel SPD_REKANG dari BPPI dan PIDENDA (Pengganti CALL insert_rekang agar bebas dari case-sensitivity bug stored procedure)
+            $tblRekang = resolvePipelineTableName($pdo, 'spd_rekang');
+            $rekangParts = [];
+            if (checkPipelineTableExists($pdo, 'spd_pidenda')) {
+                $rekangParts[] = "
+                    SELECT NULL, CONCAT('{$nextTahun}-{$nextBulan}-', LPAD(DAY(a.TANGGAL), 2, '0')), a.STLGN_ID, a.NO_PDAM, b.LOKBAY_ID,
+                    IF((a.JUMLAH - a.AKUMBAYAR) >= a.ANGPLAN, a.ANGPLAN, a.JUMLAH - a.AKUMBAYAR) as ANGPLAN, a.JUMLAH, a.AKUMBAYAR, a.XANGSUR, a.XRLANG, 'D', NULL, a.NOBUKTI, NULL, 0,
+                    {$userId}, NULL, NULL, NOW(), NOW(), NULL
+                    FROM `$tblPidenda` a
+                    JOIN `$tblStlgn` b ON b.ID = a.STLGN_ID AND b.LAST_STATUS NOT IN ('F', 'R')
+                    WHERE a.AKUMBAYAR < a.JUMLAH AND a.IS_DELETE = 0 AND a.XANGSUR > 0 AND a.ANGPLAN > 0
+                ";
+            }
+            if (checkPipelineTableExists($pdo, 'spd_bppi')) {
+                $rekangParts[] = "
+                    SELECT NULL, CONCAT('{$nextTahun}-{$nextBulan}-', LPAD(DAY(a.TANGGAL), 2, '0')), IFNULL(a.STLGN_ID, b.ID) as STLGN_ID, a.NO_PDAM, b.LOKBAY_ID,
+                    IF((a.JUMLAH - a.AKUMBAYAR) >= a.ANGPLAN, a.ANGPLAN, a.JUMLAH - a.AKUMBAYAR) as REALISASI, a.JUMLAH, a.AKUMBAYAR, a.XANGSUR, a.XRANGSUR, 'B', NULL, a.KODE, NULL, 0,
+                    {$userId}, NULL, NULL, NOW(), NOW(), NULL
+                    FROM `$tblBppi` a
+                    JOIN `$tblStlgn` b ON (b.ID = a.STLGN_ID OR b.NO_PDAM = a.NO_PDAM) AND b.LAST_STATUS NOT IN ('F', 'R')
+                    WHERE a.IS_DELETE = 0 AND a.XANGSUR > 0 AND a.AKUMBAYAR < a.JUMLAH AND a.ANGPLAN > 0
+                ";
+            }
+
+            if (!empty($rekangParts) && checkPipelineTableExists($pdo, 'spd_rekang')) {
+                $rekangUnion = implode(" UNION ALL ", $rekangParts);
+                $sqlInsertRekang = "INSERT INTO `$tblRekang` $rekangUnion";
+                recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Mengeksekusi INSERT INTO ' . $tblRekang . ' dari BPPI & PIDENDA...');
+                $stmtInsertRekang = $pdo->prepare($sqlInsertRekang);
+                $stmtInsertRekang->execute();
+                $jmlRekang = $stmtInsertRekang->rowCount();
+                $log("   - Insert ke $tblRekang dari BPPI & PIDENDA: $jmlRekang baris berhasil digenerate.");
+            } else {
+                $lastDayNext = date('t', strtotime("{$nextTahun}-{$nextBulan}-01"));
+                $tglAkhirBulan = "{$nextTahun}-{$nextBulan}-{$lastDayNext}";
+                try {
+                    $pdo->exec("CALL insert_rekang('{$tglAkhirBulan}', NULL, '{$periodeBerjalan}')");
+                    $log("   - Procedure insert_rekang berhasil dieksekusi.");
+                } catch (Exception $eProc) {
+                    $log("   - Info: Lewati procedure insert_rekang ({$eProc->getMessage()}).");
+                }
+            }
 
             // H. Update SPD_REKENING periode sebelumnya: Merubah IS_TUTUPMETER menjadi 1
             recordPipelineStep($pdo, $batchId, $periodeBerjalan, 2, $step2Name, 'RUNNING', $t2_start, null, 'Mengeksekusi UPDATE spd_rekening SET IS_TUTUPMETER = 1...');
