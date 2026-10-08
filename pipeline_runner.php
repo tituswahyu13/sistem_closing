@@ -1315,6 +1315,7 @@ function executeClosingRekeningPipeline($params = []) {
                         `TGL_LUNAS` = IFNULL(`TGL_LUNAS`, CURDATE()),
                         `TIME_LUNAS` = IFNULL(`TIME_LUNAS`, CURTIME())
                     WHERE `REK` = 1
+                      AND `FLAG` != 9
                       AND (
                           (
                               `GOL` IN (
@@ -1355,7 +1356,19 @@ function executeClosingRekeningPipeline($params = []) {
                 ];
 
             } catch (Exception $e) {
-                throw new Exception("Gagal pada $step4Name: " . $e->getMessage());
+                if (strpos($e->getMessage(), '1062 Duplicate entry') !== false) {
+                    $log("   - [INFO] Pelunasan Rumah Ibadah sudah pernah tercatat sebelumnya (Idempotent).");
+                    $t4_end = date('Y-m-d H:i:s');
+                    $pesanStep4 = "Pelunasan rekening rumah ibadah telah selesai tercatat sebelumnya.";
+                    recordPipelineStep($pdo, $batchId, $periodeBerjalan, 4, $step4Name, 'SUCCESS', $t4_start, $t4_end, $pesanStep4);
+                    $pipelineResult['steps'][4] = [
+                        'name' => $step4Name,
+                        'status' => 'SUCCESS',
+                        'pesan' => $pesanStep4
+                    ];
+                } else {
+                    throw new Exception("Gagal pada $step4Name: " . $e->getMessage());
+                }
             }
         } // End if resumeStep <= 4
 
