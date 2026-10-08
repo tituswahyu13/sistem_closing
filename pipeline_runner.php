@@ -1310,7 +1310,9 @@ function executeClosingRekeningPipeline($params = []) {
         try {
             $sqlRumahIbadah = "
                 UPDATE `pdam`.`ppob`
-                SET `FLAG` = 9
+                SET `FLAG` = 9,
+                    `TGL_LUNAS` = IFNULL(`TGL_LUNAS`, CURDATE()),
+                    `TIME_LUNAS` = IFNULL(`TIME_LUNAS`, CURTIME())
                 WHERE `REK` = 1
                   AND (
                       (
