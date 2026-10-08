@@ -3,6 +3,16 @@ header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Content-Type: application/json; charset=UTF-8");
+header("X-Frame-Options: SAMEORIGIN");
+header("X-Content-Type-Options: nosniff");
+header("X-XSS-Protection: 1; mode=block");
+header("Referrer-Policy: strict-origin-when-cross-origin");
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
 set_time_limit(0);
 ini_set('memory_limit', '512M');
 date_default_timezone_set('Asia/Jakarta');
@@ -234,6 +244,19 @@ if ($action === 'check_session') {
     } catch (Exception $e) {
         echo json_encode(["status" => "success", "data" => []]);
     }
+    exit;
+}
+
+// ====================================================================
+// GLOBAL AUTHENTICATION GUARD
+// ====================================================================
+if (!$currentUser) {
+    http_response_code(401);
+    echo json_encode([
+        "status" => "unauthenticated",
+        "authenticated" => false,
+        "message" => "Akses Ditolak: Sesi Anda belum aktif atau telah kedaluwarsa. Silakan login terlebih dahulu."
+    ]);
     exit;
 }
 
@@ -2205,7 +2228,16 @@ if ($action === 'beli' || $action === 'batal') {
                       "AUTH_PIN=" . $envAuthPin . "\n" .
                       "SESSION_TIMEOUT_MINUTES=" . $envTimeout . "\n";
 
-        file_put_contents($envFile, $envContent);
+        $bytesWritten = @file_put_contents($envFile, $envContent, LOCK_EX);
+        if ($bytesWritten === false) {
+            throw new Exception("Gagal menyimpan perubahan ke file .env. Pastikan hak akses file (chmod) di server mengizinkan penulisan.");
+        }
+
+        if (function_exists('opcache_invalidate')) {
+            @opcache_invalidate($envFile, true);
+        }
+
+        logUserAudit($pdo, $currentUser['username'] ?? 'admin', 'SWITCH_DATABASE', "Beralih ke {$preset['label']} ({$preset['host']})");
 
         echo json_encode([
             "status" => "success",
