@@ -1692,6 +1692,10 @@ if ($action === 'beli' || $action === 'batal') {
             SELECT a.ONLINE, COUNT(*) as jml, SUM(a.JUMLAH) as total
             FROM spd_tagrek a
             WHERE a.REKENING_BULAN = '202608'
+            GROUP BY a.ONLINE
+        ");
+        $tagrek08Stats = $stmtSampleTagrek08 ? $stmtSampleTagrek08->fetchAll(PDO::FETCH_ASSOC) : [];
+
         // Cek triggers pada pdam dan simpadu
         $stmtTrig = $pdo->query("
             SELECT TRIGGER_SCHEMA, TRIGGER_NAME, EVENT_MANIPULATION, EVENT_OBJECT_TABLE, ACTION_STATEMENT
