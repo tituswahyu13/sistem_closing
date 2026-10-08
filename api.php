@@ -577,6 +577,58 @@ if ($action === 'beli' || $action === 'batal') {
         http_response_code(500);
         echo json_encode(["error" => $e->getMessage()]);
     }
+} elseif ($action === 'check_rekening_cron') {
+    try {
+        require_once __DIR__ . '/pipeline_runner.php';
+        initPipelineLogTable($pdo);
+
+        // Auto-resolve antrean rekening_config yang kedaluwarsa (> 60 menit terlewat tanpa dieksekusi)
+        $pdo->exec("
+            UPDATE rekening_config 
+            SET status = 'FAILED', pesan_terakhir = 'Jadwal terlewati tanpa dieksekusi'
+            WHERE status = 'PENDING' AND TIMESTAMPDIFF(MINUTE, jadwal_eksekusi, NOW()) > 60
+        ");
+
+        // Cari jadwal PENDING yang jatuh tempo (jadwal_eksekusi <= NOW())
+        $stmt = $pdo->query("
+            SELECT * FROM rekening_config 
+            WHERE status = 'PENDING' AND jadwal_eksekusi <= NOW() 
+            ORDER BY jadwal_eksekusi ASC 
+            LIMIT 1
+        ");
+        $config = $stmt->fetch();
+        if ($config) {
+            $pdo->prepare("UPDATE rekening_config SET status = 'RUNNING', waktu_eksekusi = NOW() WHERE id = :id")->execute(['id' => $config['id']]);
+            
+            // Eksekusi Full Closing Rekening Pipeline (6-Tahapan)
+            $res = executeClosingRekeningPipeline([
+                'executed_by' => 'AUTO_SCHEDULE_CRON',
+                'periode' => $config['periode'],
+                'user_id' => intval($config['user_id_input']) ?: 1
+            ]);
+
+            if ($res['success']) {
+                $pdo->prepare("UPDATE rekening_config SET status = 'SUCCESS', pesan_terakhir = 'Closing Rekening Sukses' WHERE id = :id")->execute(['id' => $config['id']]);
+            } else {
+                $pdo->prepare("UPDATE rekening_config SET status = 'FAILED', pesan_terakhir = :pesan WHERE id = :id")->execute([
+                    'id' => $config['id'],
+                    'pesan' => 'Closing Rekening Gagal: ' . ($res['error'] ?? 'Unknown')
+                ]);
+            }
+
+            echo json_encode([
+                "status" => "executed",
+                "message" => "Closing Rekening terjadwal berhasil dieksekusi!",
+                "data" => $res,
+                "config" => $config
+            ]);
+        } else {
+            echo json_encode(["status" => "standby", "message" => "Tidak ada jadwal closing rekening PENDING yang jatuh tempo."]);
+        }
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["error" => $e->getMessage()]);
+    }
 } elseif ($action === 'save_config') {
     try {
         $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;

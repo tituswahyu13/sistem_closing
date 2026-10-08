@@ -2806,6 +2806,92 @@ function getDefault1stSchedule(periode) {
     return `${y}-${mm}-01T00:00`;
 }
 
+let isCheckingRekeningCron = false;
+
+async function triggerDueRekeningCronCheck() {
+    if (isCheckingRekeningCron) return;
+    isCheckingRekeningCron = true;
+    try {
+        const detailEl = document.getElementById('rekening-countdown-detail');
+        const badgeEl = document.getElementById('pipeline-rekening-status-badge');
+        if (detailEl) detailEl.textContent = 'Menjalankan eksekusi otomatis closing rekening...';
+        if (badgeEl) {
+            badgeEl.className = 'badge badge-warning';
+            badgeEl.innerHTML = '<i class="ph ph-spinner spinner"></i> SEDANG MEMPROSES...';
+        }
+        if (pipelineRekeningLiveIndicator) {
+            pipelineRekeningLiveIndicator.textContent = 'AUTO RUNNING';
+            pipelineRekeningLiveIndicator.className = 'badge badge-warning';
+        }
+        if (pipelineRekeningConsoleOutput) {
+            pipelineRekeningConsoleOutput.textContent = '>>> [OTOMASI] Menerima pemicu jadwal closing rekening otomatis...\n>>> Memanggil Closing Rekening Pipeline 6-Tahap via check_rekening_cron...\n';
+        }
+
+        startRekeningStopwatch();
+        updateRekeningProgressUI(0, 'RUNNING', 'Otomasi: Menjalankan Closing Rekening Pipeline...', false);
+
+        // Poller for live step progress
+        let poller = setInterval(async () => {
+            try {
+                const res = await fetch('api.php?action=get_rekening_pipeline_logs&limit=5');
+                const json = await res.json();
+                if (json.status === 'success' && json.batches && json.batches.length > 0) {
+                    const cur = json.batches[0];
+                    if (cur && cur.steps) {
+                        cur.steps.forEach(st => {
+                            const stepNum = parseInt(st.step, 10);
+                            if (stepNum >= 0 && stepNum <= 5) {
+                                const dur = st.durasi_detik ? `${st.durasi_detik}s` : '0s';
+                                const timeStr = st.waktu_mulai ? st.waktu_mulai.split(' ')[1] : '';
+                                updateRekeningStepCardUI(stepNum, st.status, `${dur} | ${timeStr}`);
+                            }
+                        });
+                        const lastStep = cur.steps[cur.steps.length - 1];
+                        if (lastStep) {
+                            updateRekeningProgressUI(parseInt(lastStep.step, 10), lastStep.status, null);
+                        }
+                    }
+                }
+            } catch (e) {}
+        }, 1500);
+
+        const res = await fetch('api.php?action=check_rekening_cron');
+        clearInterval(poller);
+        const json = await res.json();
+
+        if (json.status === 'executed') {
+            const timerEl = document.getElementById('rekening-countdown-timer');
+            if (timerEl) timerEl.textContent = 'SELESAI';
+            if (detailEl) detailEl.textContent = json.message || 'Eksekusi closing rekening otomatis sukses dijalankan!';
+            if (badgeEl) {
+                badgeEl.className = 'badge badge-success';
+                badgeEl.innerHTML = '<i class="ph ph-check-circle"></i> SUKSES DIEKSEKUSI';
+            }
+            if (pipelineRekeningLiveIndicator) {
+                pipelineRekeningLiveIndicator.textContent = 'COMPLETED';
+                pipelineRekeningLiveIndicator.className = 'badge badge-success';
+            }
+            if (pipelineRekeningConsoleOutput && json.data && json.data.logs) {
+                pipelineRekeningConsoleOutput.textContent = json.data.logs.join('\n');
+            }
+            stopRekeningStopwatch('Selesai');
+            updateRekeningProgressUI(5, 'SUCCESS', 'Closing Rekening Terjadwal Sukses Penuh (6/6 Tahap)', true);
+            showNotification('Sukses', 'Closing Rekening Terjadwal Sukses Penuh!', 'success');
+            await loadRekeningPipelineLogs();
+            await loadRekeningConfig();
+        } else {
+            stopRekeningStopwatch();
+            await loadRekeningConfig();
+            await loadRekeningPipelineLogs();
+        }
+    } catch (err) {
+        stopRekeningStopwatch('Error');
+        console.error('Error auto-trigger closing rekening:', err);
+    } finally {
+        isCheckingRekeningCron = false;
+    }
+}
+
 function startRekeningCountdownTimer(targetDateStr, status) {
     if (rekeningCountdownInterval) {
         clearInterval(rekeningCountdownInterval);
@@ -2850,12 +2936,13 @@ function startRekeningCountdownTimer(targetDateStr, status) {
             if (timerEl) timerEl.textContent = '00:00:00 (Jatuh Tempo)';
             if (badgeEl) {
                 badgeEl.className = 'badge badge-warning';
-                badgeEl.textContent = 'MENGEKSEKUSI...';
+                badgeEl.innerHTML = '<i class="ph ph-spinner spinner"></i> MENGEKSEKUSI...';
             }
             if (rekeningCountdownInterval) {
                 clearInterval(rekeningCountdownInterval);
                 rekeningCountdownInterval = null;
             }
+            triggerDueRekeningCronCheck();
             return;
         }
 
