@@ -670,12 +670,14 @@ function switchTab(tabId) {
     const backupSec = document.getElementById('backup-section');
     const closingRekeningSec = document.getElementById('closing-rekening-section');
     const auditSec = document.getElementById('audit-section');
+    const diagnostikSec = document.getElementById('diagnostik-section');
     
     // Reset all major section visibility
     if (pipelineSec) pipelineSec.style.display = (tabId === 'pipeline' || tabId === 'otomasi') ? 'flex' : 'none';
     if (backupSec) backupSec.style.display = (tabId === 'backup') ? 'flex' : 'none';
     if (closingRekeningSec) closingRekeningSec.style.display = (tabId === 'closing_rekening') ? 'flex' : 'none';
     if (auditSec) auditSec.style.display = (tabId === 'audit') ? 'flex' : 'none';
+    if (diagnostikSec) diagnostikSec.style.display = (tabId === 'diagnostik') ? 'flex' : 'none';
     
     const isTableTab = (tabId === 'beli' || tabId === 'batal' || tabId === 'dibeli');
     if (tableContainer) tableContainer.style.display = isTableTab ? 'block' : 'none';
@@ -752,6 +754,10 @@ function switchTab(tabId) {
         loadBackupData();
         startBackupTabAutoPoller();
         startNightlyBackupCountdown();
+    } else if (tabId === 'diagnostik') {
+        pageTitle.textContent = 'Diagnostik Server & Telemetri Database';
+        if (budgetPanel) budgetPanel.style.display = 'none';
+        loadDetailedDiagnostics();
     }
 }
 
@@ -3542,6 +3548,12 @@ async function loadServerMetrics(showFeedback = false) {
             if (cpuTextEl) cpuTextEl.textContent = `${json.cpu.percent}%`;
         }
 
+        // Network
+        const netTextEl = document.getElementById('sidebar-net-text');
+        if (json.network && netTextEl) {
+            netTextEl.textContent = json.network.rx_formatted;
+        }
+
         // Closing & Backup Operations
         if (json.closing_ops) {
             if (backupTextEl) {
@@ -3913,6 +3925,8 @@ async function executeServerSwitch(targetServer) {
             if (typeof loadAnomaliAngsuranAdmin === 'function') loadAnomaliAngsuranAdmin();
         } else if (currentActiveTab === 'backup') {
             if (typeof loadBackupData === 'function') loadBackupData();
+        } else if (currentActiveTab === 'diagnostik') {
+            if (typeof loadDetailedDiagnostics === 'function') loadDetailedDiagnostics();
         }
 
         setDbSwitchStep(3, 'completed', 'Semua data modul tersinkronisasi.');
@@ -3933,6 +3947,249 @@ async function executeServerSwitch(targetServer) {
     } finally {
         if (clickedDiagBtn) clickedDiagBtn.disabled = false;
         updateServerSwitcherUI(currentActiveServerKey);
+    }
+}
+
+// Dedicated Halaman Info Diagnostik Lanjutan
+async function loadDetailedDiagnostics(showToast = false) {
+    const btnRefresh = document.getElementById('btn-refresh-detailed-diag');
+    if (btnRefresh) {
+        btnRefresh.innerHTML = '<i class="ph ph-spinner-gap ph-spin"></i> Memuat Diagnostik...';
+        btnRefresh.disabled = true;
+    }
+
+    try {
+        const res = await fetch('api.php?action=get_detailed_diagnostics');
+        const json = await res.json();
+        if (!res.ok || json.status !== 'success') {
+            throw new Error(json.message || 'Gagal memuat telemetri server');
+        }
+
+        // 1. Hero Banner
+        const heroStatusBadge = document.getElementById('diag-hero-status-badge');
+        const heroTargetDb = document.getElementById('diag-hero-target-db');
+        const heroServerTime = document.getElementById('diag-hero-server-time');
+
+        if (heroStatusBadge) {
+            heroStatusBadge.textContent = 'Online & Normal';
+            heroStatusBadge.className = 'badge badge-success';
+        }
+        if (heroTargetDb && json.active_database) {
+            heroTargetDb.textContent = `${json.active_database.label} (${json.active_database.host}:${json.active_database.port})`;
+        }
+        if (heroServerTime) {
+            heroServerTime.textContent = json.server_time || '-';
+        }
+
+        // 2. Hardware Resource KPI Cards
+        // CPU
+        if (json.resources && json.resources.cpu) {
+            const cpu = json.resources.cpu;
+            const cpuVal = document.getElementById('diag-cpu-val');
+            const cpuFill = document.getElementById('diag-cpu-bar-fill');
+            const cpuLoad = document.getElementById('diag-cpu-load');
+            const cpuBadge = document.getElementById('diag-cpu-badge');
+            const cpuStatus = document.getElementById('diag-cpu-status');
+
+            if (cpuVal) cpuVal.textContent = `${cpu.percent}%`;
+            if (cpuFill) cpuFill.style.width = `${cpu.percent}%`;
+            if (cpuLoad) cpuLoad.textContent = `${cpu.load_1m} / ${cpu.load_5m} / ${cpu.load_15m}`;
+            if (cpuBadge) cpuBadge.textContent = `${cpu.cores} Cores`;
+            if (cpuStatus) {
+                cpuStatus.textContent = cpu.status === 'danger' ? 'Kritis' : (cpu.status === 'warning' ? 'Tinggi' : 'Normal');
+                cpuStatus.style.color = cpu.status === 'danger' ? '#ef4444' : (cpu.status === 'warning' ? '#f59e0b' : '#34d399');
+            }
+        }
+
+        // RAM
+        if (json.resources && json.resources.ram) {
+            const ram = json.resources.ram;
+            const ramVal = document.getElementById('diag-ram-val');
+            const ramFill = document.getElementById('diag-ram-bar-fill');
+            const ramFree = document.getElementById('diag-ram-free');
+            const ramBadge = document.getElementById('diag-ram-badge');
+            const ramPct = document.getElementById('diag-ram-pct-text');
+
+            if (ramVal) ramVal.textContent = `${ram.used_gb} GB`;
+            if (ramFill) ramFill.style.width = `${ram.percent}%`;
+            if (ramFree) ramFree.textContent = `${ram.free_gb} GB`;
+            if (ramBadge) ramBadge.textContent = `Total ${ram.total_gb} GB`;
+            if (ramPct) ramPct.textContent = `${ram.percent}% Terpakai`;
+        }
+
+        // Storage / Disk
+        if (json.resources && json.resources.disk) {
+            const disk = json.resources.disk;
+            const diskVal = document.getElementById('diag-disk-val');
+            const diskFill = document.getElementById('diag-disk-bar-fill');
+            const diskBadge = document.getElementById('diag-disk-badge');
+            const diskBackupSize = document.getElementById('diag-backup-dir-size');
+            const diskBackupCount = document.getElementById('diag-backup-count');
+            const diskPctText = document.getElementById('diag-disk-pct-text');
+
+            if (diskVal) diskVal.textContent = `${disk.free_gb} GB Free`;
+            if (diskFill) diskFill.style.width = `${disk.percent}%`;
+            if (diskBadge) diskBadge.textContent = `Total ${disk.total_gb} GB`;
+            if (diskBackupSize) diskBackupSize.textContent = `${disk.backup_dir_mb} MB`;
+            if (diskBackupCount) diskBackupCount.textContent = `${disk.backup_file_count}`;
+            if (diskPctText) diskPctText.textContent = `${disk.percent}% Terpakai (${disk.used_gb} GB)`;
+        }
+
+        // Network
+        if (json.resources && json.resources.network) {
+            const net = json.resources.network;
+            const netVal = document.getElementById('diag-net-val');
+            const netRx = document.getElementById('diag-net-rx');
+            const netTx = document.getElementById('diag-net-tx');
+
+            if (netVal) netVal.textContent = net.rx_formatted;
+            if (netRx) netRx.textContent = net.rx_formatted;
+            if (netTx) netTx.textContent = net.tx_formatted;
+        }
+
+        // 3. Multi-Server Status Comparison
+        if (json.multi_server_status) {
+            const simpam = json.multi_server_status.simpam;
+            const simpadu = json.multi_server_status.simpadu;
+
+            const boxSimpam = document.getElementById('diag-box-simpam');
+            const boxSimpadu = document.getElementById('diag-box-simpadu');
+            const pingSimpam = document.getElementById('diag-ping-simpam');
+            const pingSimpadu = document.getElementById('diag-ping-simpadu');
+            const btnSimpam = document.getElementById('btn-diag-action-simpam');
+            const btnSimpadu = document.getElementById('btn-diag-action-simpadu');
+
+            if (boxSimpam && simpam) {
+                boxSimpam.className = `server-compare-box ${simpam.is_active ? 'active' : ''}`;
+                if (pingSimpam) {
+                    pingSimpam.textContent = simpam.online ? `${simpam.ping_ms} ms (Online)` : 'Offline / Error';
+                    pingSimpam.style.color = simpam.online ? '#38bdf8' : '#ef4444';
+                }
+                if (btnSimpam) {
+                    btnSimpam.className = `btn btn-sm btn-server-target ${simpam.is_active ? 'active' : ''}`;
+                    btnSimpam.innerHTML = simpam.is_active ? '<i class="ph ph-check-circle"></i> Server Aktif (Dev)' : '<i class="ph ph-arrow-right"></i> Beralih ke SIMPAM';
+                }
+            }
+
+            if (boxSimpadu && simpadu) {
+                boxSimpadu.className = `server-compare-box ${simpadu.is_active ? 'active active-prod' : ''}`;
+                if (pingSimpadu) {
+                    pingSimpadu.textContent = simpadu.online ? `${simpadu.ping_ms} ms (Online)` : 'Offline / Error';
+                    pingSimpadu.style.color = simpadu.online ? '#a855f7' : '#ef4444';
+                }
+                if (btnSimpadu) {
+                    btnSimpadu.className = `btn btn-sm btn-server-target ${simpadu.is_active ? 'active' : ''}`;
+                    btnSimpadu.innerHTML = simpadu.is_active ? '<i class="ph ph-check-circle"></i> Server Aktif (Prod)' : '<i class="ph ph-arrow-right"></i> Beralih ke SIMPADU';
+                }
+            }
+        }
+
+        // Web Server Environment
+        if (json.system) {
+            const osEl = document.getElementById('diag-env-os');
+            const phpEl = document.getElementById('diag-env-php');
+            const limitsEl = document.getElementById('diag-env-limits');
+
+            if (osEl) osEl.textContent = `${json.system.os} (${json.system.web_server})`;
+            if (phpEl) phpEl.textContent = `PHP ${json.system.php_version} (Host: ${json.system.hostname})`;
+            if (limitsEl) limitsEl.textContent = `Memory: ${json.system.memory_limit} | Max Exec: ${json.system.max_execution_time}`;
+        }
+
+        // Active Database Deep Telemetry
+        if (json.active_database) {
+            const db = json.active_database;
+            const engineBadge = document.getElementById('diag-db-engine-badge');
+            const dbUptime = document.getElementById('diag-db-uptime');
+            const dbThreads = document.getElementById('diag-db-threads');
+            const dbQps = document.getElementById('diag-db-qps');
+            const dbSlow = document.getElementById('diag-db-slow');
+            const dbSize = document.getElementById('diag-db-size');
+            const dbTraffic = document.getElementById('diag-db-traffic');
+
+            if (engineBadge) engineBadge.textContent = db.version;
+            if (dbUptime) dbUptime.textContent = `${db.uptime_formatted} (${db.uptime_hours} jam)`;
+            if (dbThreads) dbThreads.textContent = `${db.threads_connected} aktif (Max: ${db.max_connections}, Peak: ${db.max_used_connections})`;
+            if (dbQps) dbQps.textContent = `${db.queries_total.toLocaleString('id-ID')} kueri (${db.qps} QPS)`;
+            if (dbSlow) {
+                dbSlow.textContent = `${db.slow_queries} kueri`;
+                dbSlow.style.color = db.slow_queries > 0 ? '#f59e0b' : '#34d399';
+            }
+            if (dbSize) dbSize.textContent = `${db.total_tables} Tabel | ${db.db_size_formatted}`;
+            if (dbTraffic) dbTraffic.textContent = `Recv: ${db.bytes_received_mb} MB | Sent: ${db.bytes_sent_mb} MB`;
+        }
+
+        // Table Health List
+        const tbodyHealth = document.getElementById('tbody-table-health');
+        if (tbodyHealth && Array.isArray(json.table_health)) {
+            if (json.table_health.length === 0) {
+                tbodyHealth.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 1rem;">Tidak ada tabel ditemukan.</td></tr>';
+            } else {
+                tbodyHealth.innerHTML = json.table_health.map(t => `
+                    <tr>
+                        <td><strong><code>${t.table_name}</code></strong></td>
+                        <td><span class="badge badge-secondary" style="font-size: 0.68rem;">${t.engine}</span></td>
+                        <td style="text-align: right; font-family: monospace; color: #f1f5f9;">${(t.row_count || 0).toLocaleString('id-ID')} baris</td>
+                        <td style="text-align: center;">
+                            ${t.exists 
+                                ? '<span class="badge badge-success" style="font-size: 0.68rem;"><i class="ph ph-check-circle"></i> Ready</span>' 
+                                : '<span class="badge badge-danger" style="font-size: 0.68rem;"><i class="ph ph-warning"></i> Missing</span>'
+                            }
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        // Top Storage Tables
+        const tbodyTop = document.getElementById('tbody-top-tables');
+        if (tbodyTop && Array.isArray(json.active_database?.top_tables)) {
+            const topList = json.active_database.top_tables;
+            if (topList.length === 0) {
+                tbodyTop.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 1rem;">Tidak ada data tabel.</td></tr>';
+            } else {
+                tbodyTop.innerHTML = topList.map(t => `
+                    <tr>
+                        <td><strong><code>${t.TABLE_NAME}</code></strong></td>
+                        <td style="text-align: right; font-family: monospace;">${(parseInt(t.TABLE_ROWS) || 0).toLocaleString('id-ID')}</td>
+                        <td style="text-align: right; font-family: monospace; color: #94a3b8;">${t.DATA_MB} MB</td>
+                        <td style="text-align: right; font-family: monospace; color: #94a3b8;">${t.INDEX_MB} MB</td>
+                        <td style="text-align: right; font-family: monospace; color: #38bdf8; font-weight: 700;">${t.TOTAL_MB} MB</td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        // Recent Audit Event Logs
+        const tbodyAudit = document.getElementById('tbody-diag-audit-logs');
+        if (tbodyAudit && Array.isArray(json.recent_audit_logs)) {
+            const logs = json.recent_audit_logs;
+            if (logs.length === 0) {
+                tbodyAudit.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 1rem; color: #64748b;">Belum ada riwayat log audit.</td></tr>';
+            } else {
+                tbodyAudit.innerHTML = logs.map(l => `
+                    <tr>
+                        <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${l.created_at || '-'}</td>
+                        <td><strong>${l.username || 'System'}</strong></td>
+                        <td><span class="badge badge-secondary">${l.action || '-'}</span></td>
+                        <td style="color: #cbd5e1; font-size: 0.75rem;">${l.details || '-'}</td>
+                        <td style="font-family: monospace; font-size: 0.72rem; color: #64748b;">${l.ip_address || '-'}</td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        if (showToast) {
+            showNotification('Diagnostik Diperbarui', 'Data telemetri server dan database berhasil disinkronkan.', 'success');
+        }
+
+    } catch (e) {
+        console.error('Error loadDetailedDiagnostics:', e);
+        showNotification('Gagal Memuat Diagnostik', e.message, 'danger');
+    } finally {
+        if (btnRefresh) {
+            btnRefresh.innerHTML = '<i class="ph ph-arrows-clockwise"></i> Uji Koneksi & Refresh Metrik';
+            btnRefresh.disabled = false;
+        }
     }
 }
 
@@ -3958,7 +4215,9 @@ function closeDiagnosticsModal() {
 }
 
 if (sidebarServerMonitor) {
-    sidebarServerMonitor.addEventListener('click', openDiagnosticsModal);
+    sidebarServerMonitor.addEventListener('click', () => {
+        switchTab('diagnostik');
+    });
 }
 if (btnCloseDiagModal) {
     btnCloseDiagModal.addEventListener('click', closeDiagnosticsModal);
@@ -4007,6 +4266,20 @@ if (btnDiagSwitchSimpadu) {
         executeServerSwitch('simpadu');
     });
 }
+
+// Dedicated Diagnostik Section Listeners
+document.getElementById('btn-refresh-detailed-diag')?.addEventListener('click', () => {
+    loadDetailedDiagnostics(true);
+});
+document.getElementById('btn-hero-open-switcher')?.addEventListener('click', () => {
+    openDiagnosticsModal();
+});
+document.getElementById('btn-diag-action-simpam')?.addEventListener('click', () => {
+    executeServerSwitch('simpam');
+});
+document.getElementById('btn-diag-action-simpadu')?.addEventListener('click', () => {
+    executeServerSwitch('simpadu');
+});
 
 // Inisialisasi Server Metrics Poller
 loadServerMetrics();

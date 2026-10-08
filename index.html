@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=62">
+    <link rel="stylesheet" href="styles.css?v=63">
 </head>
 <body>
     <div class="app-container">
@@ -60,10 +60,14 @@
                     <i class="ph ph-hard-drives"></i>
                     <span>Cadangan Database</span>
                 </button>
+                <button class="nav-item" data-tab="diagnostik">
+                    <i class="ph ph-cpu"></i>
+                    <span>Diagnostik Server</span>
+                </button>
             </nav>
 
             <!-- Sidebar Server Health & Resource Monitor Card -->
-            <div class="sidebar-server-monitor" id="sidebar-server-monitor" title="Klik untuk membuka Diagnostik Lengkap Server & Closing">
+            <div class="sidebar-server-monitor" id="sidebar-server-monitor" title="Klik untuk membuka Halaman Diagnostik Server & Database">
                 <!-- Database Indicator -->
                 <div class="sidebar-db-indicator">
                     <span class="db-dot-live"></span>
@@ -102,15 +106,19 @@
                         </div>
                     </div>
 
-                    <!-- CPU & Database Quick Stats -->
-                    <div class="sidebar-metric-mini-grid">
-                        <div class="mini-stat-card">
+                    <!-- CPU, Database & Network Quick Stats (3 Columns) -->
+                    <div class="sidebar-metric-mini-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+                        <div class="mini-stat-card" title="Beban CPU Server">
                             <span class="mini-stat-label"><i class="ph ph-activity"></i> CPU</span>
                             <span class="mini-stat-val" id="sidebar-cpu-text">--%</span>
                         </div>
-                        <div class="mini-stat-card">
-                            <span class="mini-stat-label"><i class="ph ph-database"></i> Database</span>
+                        <div class="mini-stat-card" title="Ukuran Database">
+                            <span class="mini-stat-label"><i class="ph ph-database"></i> DB</span>
                             <span class="mini-stat-val" id="sidebar-db-text">-- GB</span>
+                        </div>
+                        <div class="mini-stat-card" title="Lalu Lintas Jaringan">
+                            <span class="mini-stat-label"><i class="ph ph-arrows-down-up"></i> Net</span>
+                            <span class="mini-stat-val" id="sidebar-net-text">-- MB</span>
                         </div>
                     </div>
 
@@ -128,7 +136,7 @@
                 </div>
 
                 <div class="sidebar-monitor-click-hint">
-                    <i class="ph ph-info"></i> Klik untuk info diagnostik
+                    <i class="ph ph-arrow-square-out"></i> Buka halaman info diagnostik
                 </div>
             </div>
 
@@ -1640,6 +1648,297 @@
                     </div>
                 </div>
 
+                <!-- Dedicated Diagnostik Server & Database Section -->
+                <div class="diagnostik-section" id="diagnostik-section" style="display: none;">
+                    <!-- Hero Banner -->
+                    <div class="diag-hero-banner">
+                        <div class="diag-hero-left">
+                            <div class="diag-hero-icon">
+                                <i class="ph ph-cpu"></i>
+                            </div>
+                            <div class="diag-hero-info">
+                                <h2>
+                                    <span>Diagnostik Server & Telemetri Database</span>
+                                    <span class="badge badge-success" id="diag-hero-status-badge">Online</span>
+                                </h2>
+                                <p id="diag-hero-subtitle">
+                                    Target Terhubung: <strong id="diag-hero-target-db">SIMPAM (192.168.0.10:3306)</strong> | Waktu Server: <span id="diag-hero-server-time">...</span>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="diag-hero-actions">
+                            <button type="button" class="btn btn-secondary" id="btn-refresh-detailed-diag">
+                                <i class="ph ph-arrows-clockwise"></i> Uji Koneksi & Refresh Metrik
+                            </button>
+                            <button type="button" class="btn btn-primary" id="btn-hero-open-switcher">
+                                <i class="ph ph-swap"></i> Beralih Database
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Core Hardware Resource KPI Grid (4 Cards) -->
+                    <div class="diag-kpi-grid">
+                        <!-- Card 1: CPU -->
+                        <div class="diag-kpi-card">
+                            <div class="diag-kpi-card-header">
+                                <span class="diag-kpi-title"><i class="ph ph-activity"></i> CPU & Beban Sistem</span>
+                                <span class="badge badge-secondary" id="diag-cpu-badge">4 Cores</span>
+                            </div>
+                            <div class="diag-kpi-val" id="diag-cpu-val">0%</div>
+                            <div class="diag-kpi-bar">
+                                <div class="diag-kpi-bar-fill" id="diag-cpu-bar-fill" style="width: 0%; background: linear-gradient(90deg, #38bdf8, #6366f1);"></div>
+                            </div>
+                            <div class="diag-kpi-meta">
+                                <span>Load Avg: <strong id="diag-cpu-load">0.25 / 0.30 / 0.35</strong></span>
+                                <span id="diag-cpu-status" style="color: #34d399;">Normal</span>
+                            </div>
+                        </div>
+
+                        <!-- Card 2: RAM -->
+                        <div class="diag-kpi-card">
+                            <div class="diag-kpi-card-header">
+                                <span class="diag-kpi-title"><i class="ph ph-cpu"></i> Memori RAM</span>
+                                <span class="badge badge-secondary" id="diag-ram-badge">Total 8 GB</span>
+                            </div>
+                            <div class="diag-kpi-val" id="diag-ram-val">0 GB</div>
+                            <div class="diag-kpi-bar">
+                                <div class="diag-kpi-bar-fill" id="diag-ram-bar-fill" style="width: 0%; background: linear-gradient(90deg, #a855f7, #ec4899);"></div>
+                            </div>
+                            <div class="diag-kpi-meta">
+                                <span>Free: <strong id="diag-ram-free">-- GB</strong></span>
+                                <span id="diag-ram-pct-text">--% Terpakai</span>
+                            </div>
+                        </div>
+
+                        <!-- Card 3: Storage -->
+                        <div class="diag-kpi-card">
+                            <div class="diag-kpi-card-header">
+                                <span class="diag-kpi-title"><i class="ph ph-hard-drive"></i> Storage / Disk</span>
+                                <span class="badge badge-secondary" id="diag-disk-badge">Total 100 GB</span>
+                            </div>
+                            <div class="diag-kpi-val" id="diag-disk-val">0 GB Free</div>
+                            <div class="diag-kpi-bar">
+                                <div class="diag-kpi-bar-fill" id="diag-disk-bar-fill" style="width: 0%; background: linear-gradient(90deg, #34d399, #10b981);"></div>
+                            </div>
+                            <div class="diag-kpi-meta">
+                                <span>Backup Dir: <strong id="diag-backup-dir-size">-- MB</strong> (<span id="diag-backup-count">0</span> file)</span>
+                                <span id="diag-disk-pct-text">--% Terpakai</span>
+                            </div>
+                        </div>
+
+                        <!-- Card 4: Network -->
+                        <div class="diag-kpi-card">
+                            <div class="diag-kpi-card-header">
+                                <span class="diag-kpi-title"><i class="ph ph-arrows-down-up"></i> Traffic Jaringan</span>
+                                <span class="badge badge-secondary">Interface</span>
+                            </div>
+                            <div class="diag-kpi-val" id="diag-net-val">0 MB</div>
+                            <div class="diag-kpi-bar">
+                                <div class="diag-kpi-bar-fill" id="diag-net-bar-fill" style="width: 40%; background: linear-gradient(90deg, #38bdf8, #a855f7);"></div>
+                            </div>
+                            <div class="diag-kpi-meta">
+                                <span>RX: <strong id="diag-net-rx">-- MB</strong></span>
+                                <span>TX: <strong id="diag-net-tx">-- MB</strong></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2-Column: Multi-Server Status & Active DB Telemetry -->
+                    <div class="diag-two-col-grid">
+                        <!-- Left: Multi-Server Status Comparison -->
+                        <div class="diag-card">
+                            <div class="diag-card-hdr">
+                                <span class="diag-card-title"><i class="ph ph-swap"></i> Status Konektivitas Multi-Server Database</span>
+                                <span class="badge badge-secondary" style="font-size: 0.7rem;">Realtime Check</span>
+                            </div>
+                            <div class="server-compare-grid">
+                                <!-- Box SIMPAM -->
+                                <div class="server-compare-box" id="diag-box-simpam">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div style="display: flex; align-items: center; gap: 0.45rem;">
+                                            <span class="server-dot dot-dev"></span>
+                                            <strong style="font-size: 0.88rem; color: #f1f5f9;">SIMPAM</strong>
+                                        </div>
+                                        <span class="badge badge-dev" id="diag-badge-simpam">Development</span>
+                                    </div>
+                                    <div style="font-size: 0.72rem; color: #94a3b8; display: flex; flex-direction: column; gap: 0.2rem;">
+                                        <span>Host: <code>192.168.0.10:3306</code></span>
+                                        <span>Ping: <strong id="diag-ping-simpam" style="color: #38bdf8;">-- ms</strong></span>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-server-target" id="btn-diag-action-simpam" style="margin-top: 0.35rem;">
+                                        <i class="ph ph-arrow-right"></i> Beralih ke SIMPAM
+                                    </button>
+                                </div>
+
+                                <!-- Box SIMPADU -->
+                                <div class="server-compare-box" id="diag-box-simpadu">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <div style="display: flex; align-items: center; gap: 0.45rem;">
+                                            <span class="server-dot dot-prod"></span>
+                                            <strong style="font-size: 0.88rem; color: #f1f5f9;">SIMPADU</strong>
+                                        </div>
+                                        <span class="badge badge-prod" id="diag-badge-simpadu">Production Live</span>
+                                    </div>
+                                    <div style="font-size: 0.72rem; color: #94a3b8; display: flex; flex-direction: column; gap: 0.2rem;">
+                                        <span>Host: <code>192.168.8.11:3306</code></span>
+                                        <span>Ping: <strong id="diag-ping-simpadu" style="color: #a855f7;">-- ms</strong></span>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-server-target" id="btn-diag-action-simpadu" style="margin-top: 0.35rem;">
+                                        <i class="ph ph-arrow-right"></i> Beralih ke SIMPADU
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Web Server & Runtime Environment -->
+                            <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.85rem; margin-top: 0.25rem;">
+                                <span style="font-size: 0.78rem; font-weight: 700; color: #cbd5e1; display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.6rem;">
+                                    <i class="ph ph-terminal" style="color: #a5b4fc;"></i> Lingkungan Runtime Web Server
+                                </span>
+                                <div class="diag-stat-rows">
+                                    <div class="diag-stat-row">
+                                        <span class="diag-stat-label"><i class="ph ph-desktop"></i> Sistem Operasi</span>
+                                        <span class="diag-stat-val" id="diag-env-os">Linux</span>
+                                    </div>
+                                    <div class="diag-stat-row">
+                                        <span class="diag-stat-label"><i class="ph ph-file-code"></i> Versi PHP</span>
+                                        <span class="diag-stat-val" id="diag-env-php">PHP 8.x</span>
+                                    </div>
+                                    <div class="diag-stat-row">
+                                        <span class="diag-stat-label"><i class="ph ph-lightning"></i> Memory Limit & Max Exec Time</span>
+                                        <span class="diag-stat-val" id="diag-env-limits">512M / 0s</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right: Active Database Deep Telemetry -->
+                        <div class="diag-card">
+                            <div class="diag-card-hdr">
+                                <span class="diag-card-title"><i class="ph ph-database"></i> Telemetri Mesin Database Aktif</span>
+                                <span class="badge badge-primary" id="diag-db-engine-badge">MySQL / MariaDB</span>
+                            </div>
+                            <div class="diag-stat-rows">
+                                <div class="diag-stat-row">
+                                    <span class="diag-stat-label"><i class="ph ph-clock"></i> Uptime Database</span>
+                                    <span class="diag-stat-val" id="diag-db-uptime">--</span>
+                                </div>
+                                <div class="diag-stat-row">
+                                    <span class="diag-stat-label"><i class="ph ph-plug"></i> Koneksi Aktif / Max Limit</span>
+                                    <span class="diag-stat-val" id="diag-db-threads">-- / --</span>
+                                </div>
+                                <div class="diag-stat-row">
+                                    <span class="diag-stat-label"><i class="ph ph-chart-line-up"></i> Total Kueri & QPS (Kueri / dtk)</span>
+                                    <span class="diag-stat-val" id="diag-db-qps">--</span>
+                                </div>
+                                <div class="diag-stat-row">
+                                    <span class="diag-stat-label"><i class="ph ph-warning-circle"></i> Kueri Lambat (Slow Queries)</span>
+                                    <span class="diag-stat-val" id="diag-db-slow">0</span>
+                                </div>
+                                <div class="diag-stat-row">
+                                    <span class="diag-stat-label"><i class="ph ph-stack"></i> Total Tabel & Ukuran Database</span>
+                                    <span class="diag-stat-val" id="diag-db-size">-- Tabel | -- GB</span>
+                                </div>
+                                <div class="diag-stat-row">
+                                    <span class="diag-stat-label"><i class="ph ph-arrows-left-right"></i> Data Diterima / Dikirim DB</span>
+                                    <span class="diag-stat-val" id="diag-db-traffic">-- MB / -- MB</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2-Column Tables: Vital Closing Table Health & Top Storage Tables -->
+                    <div class="diag-two-col-grid">
+                        <!-- Left: Vital Closing Tables Health -->
+                        <div class="glass-panel" style="padding: 1.25rem 1.5rem;">
+                            <div class="panel-header" style="margin-bottom: 0.85rem;">
+                                <div>
+                                    <h2 style="font-size: 1rem; color: #38bdf8;"><i class="ph ph-shield-check"></i> Integritas Tabel Modul Closing</h2>
+                                    <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                        Pengecekan kesiapan tabel utama yang digunakan dalam siklus closing.
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+                                <table class="data-table" style="font-size: 0.78rem;">
+                                    <thead>
+                                        <tr>
+                                            <th>NAMA TABEL</th>
+                                            <th>ENGINE</th>
+                                            <th style="text-align: right;">JUMLAH BARIS</th>
+                                            <th style="text-align: center;">STATUS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-table-health">
+                                        <tr>
+                                            <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 1.5rem;">Memuat data integritas tabel...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Right: Top Database Tables by Storage -->
+                        <div class="glass-panel" style="padding: 1.25rem 1.5rem;">
+                            <div class="panel-header" style="margin-bottom: 0.85rem;">
+                                <div>
+                                    <h2 style="font-size: 1rem; color: #a855f7;"><i class="ph ph-hard-drives"></i> Top 15 Tabel Terbesar (Storage)</h2>
+                                    <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                        Distribusi alokasi data & index tabel pada database simpadu.
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+                                <table class="data-table" style="font-size: 0.78rem;">
+                                    <thead>
+                                        <tr>
+                                            <th>NAMA TABEL</th>
+                                            <th style="text-align: right;">BARIS</th>
+                                            <th style="text-align: right;">DATA</th>
+                                            <th style="text-align: right;">INDEX</th>
+                                            <th style="text-align: right;">TOTAL</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-top-tables">
+                                        <tr>
+                                            <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 1.5rem;">Memuat rincian ukuran tabel...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Audit & Diagnostic Event Logs -->
+                    <div class="glass-panel" style="padding: 1.25rem 1.5rem;">
+                        <div class="panel-header" style="margin-bottom: 0.85rem;">
+                            <div>
+                                <h2 style="font-size: 1rem; color: #f1f5f9;"><i class="ph ph-scroll"></i> Log Aktivitas Diagnostik & Pengalihan Server</h2>
+                                <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                                    Catatan riwayat audit pergantian database, eksekusi modul, dan aktivitas sistem.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+                            <table class="data-table" style="font-size: 0.78rem;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 170px;">WAKTU</th>
+                                        <th style="width: 130px;">OPERATOR</th>
+                                        <th style="width: 160px;">AKSI</th>
+                                        <th>DETAIL</th>
+                                        <th style="width: 120px;">IP ADDRESS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-diag-audit-logs">
+                                    <tr>
+                                        <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 1.5rem;">Memuat log aktivitas...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- SQL Query Reference -->
                 <div class="glass-panel query-container mt-4" id="query-container-panel">
                     <div class="panel-header">
@@ -2176,7 +2475,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=62"></script>
+    <script src="app.js?v=63"></script>
 </body>
 </html>
 
