@@ -55,6 +55,29 @@ function initPipelineLogTable($pdo) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     ";
     $pdo->exec($sql);
+function getDbTablesMap($pdo) {
+    static $map = null;
+    if ($map === null) {
+        $map = [];
+        try {
+            $stmt = $pdo->query("SHOW TABLES");
+            while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
+                $map[strtolower($row[0])] = $row[0];
+            }
+        } catch (Exception $e) {}
+    }
+    return $map;
+}
+
+function resolvePipelineTableName($pdo, $name) {
+    $map = getDbTablesMap($pdo);
+    $lower = strtolower($name);
+    return $map[$lower] ?? $name;
+}
+
+function checkPipelineTableExists($pdo, $name) {
+    $map = getDbTablesMap($pdo);
+    return isset($map[strtolower($name)]);
 }
 
 /**
@@ -868,80 +891,107 @@ function executeClosingRekeningPipeline($params = []) {
             }
             $log("   - Update SPD_PERIODE: Periode $periodeBerjalan ditutup, Periode $nextPeriode diaktifkan.");
 
-            // D. Update SPD_BPPI
-            $sqlBppi = "
-                UPDATE spd_bppi a, (
-                    SELECT a.ID, b.ID as STLGN_ID, a.TANGGAL,
-                    IF((a.JUMLAH - a.AKUMBAYAR - a.DISKON) >= a.ANGPLAN, a.ANGPLAN, a.JUMLAH - a.AKUMBAYAR - a.DISKON) AS bayar,
-                    (a.JUMLAH - a.AKUMBAYAR - a.DISKON) AS TOTAL_HUTANG, a.XANGSUR, a.XRANGSUR
-                    FROM spd_bppi a
-                    JOIN spd_stlgn b ON (b.ID = a.STLGN_ID OR b.NO_PDAM = a.NO_PDAM) 
-                    JOIN spd_rekening c ON c.STLGN_ID = b.ID AND c.PERIODE = :cur_periode AND c.STATUS <> 'L'
-                    WHERE a.IS_DELETE = 0 AND a.XANGSUR > 0 AND a.AKUMBAYAR < a.JUMLAH AND a.ANGPLAN > 0
-                ) b
-                SET a.AKUMBAYAR = a.AKUMBAYAR + b.bayar,
-                    a.XRANGSUR = a.XRANGSUR + 1
-                WHERE a.ID = b.ID
-            ";
-            $stmtBppi = $pdo->prepare($sqlBppi);
-            $stmtBppi->execute(['cur_periode' => $periodeBerjalan]);
-            $jmlBppiUpdated = $stmtBppi->rowCount();
-            $log("   - Update SPD_BPPI: $jmlBppiUpdated baris angsuran BPPI diperbarui.");
+            // D. Update BPPI (jika tabel ada)
+            $tblBppi = resolvePipelineTableName($pdo, 'spd_bppi');
+            $tblStlgn = resolvePipelineTableName($pdo, 'spd_stlgn');
+            $tblRekening = resolvePipelineTableName($pdo, 'spd_rekening');
+            $tblPidenda = resolvePipelineTableName($pdo, 'spd_pidenda');
 
-            // E. Update SPD_PIDENDA
-            $sqlPidenda = "
-                UPDATE spd_pidenda a, (
-                    SELECT a.ID, a.STLGN_ID, a.TANGGAL, 
-                    IF((a.JUMLAH - a.AKUMBAYAR) >= a.ANGPLAN, a.ANGPLAN, a.JUMLAH - a.AKUMBAYAR) AS bayar,
-                    (a.JUMLAH - a.AKUMBAYAR) AS TOTAL_HUTANG, a.XANGSUR, a.XRLANG
-                    FROM spd_pidenda a
-                    JOIN spd_stlgn b ON b.ID = a.STLGN_ID
-                    JOIN spd_rekening c ON c.STLGN_ID = b.ID AND c.PERIODE = :cur_periode AND c.STATUS <> 'L'
-                    WHERE a.IS_DELETE = 0 AND a.XANGSUR > 0 AND a.AKUMBAYAR < a.JUMLAH AND a.ANGPLAN > 0
-                ) b
-                SET a.AKUMBAYAR = a.AKUMBAYAR + b.bayar,
-                    a.XRLANG = a.XRLANG + 1
-                WHERE a.ID = b.ID
-            ";
-            $stmtPidenda = $pdo->prepare($sqlPidenda);
-            $stmtPidenda->execute(['cur_periode' => $periodeBerjalan]);
-            $jmlPidendaUpdated = $stmtPidenda->rowCount();
-            $log("   - Update SPD_PIDENDA: $jmlPidendaUpdated baris angsuran denda diperbarui.");
-
-            // F. Memasukkan NON_AIR ke tabel SPD_REKENING periode baru ($nextPeriode)
-            $sqlNonAir = "
-                UPDATE spd_rekening a, (
-                    SELECT a.STLGN_ID, SUM(a.bayar) AS bayar, SUM(TOTAL_HUTANG) AS TOTAL_HUTANG, a.XANGSUR, a.XRANGSUR
-                    FROM (
-                        SELECT ifnull(a.STLGN_ID, b.ID) AS STLGN_ID, a.TANGGAL, 
+            if (checkPipelineTableExists($pdo, 'spd_bppi')) {
+                $sqlBppi = "
+                    UPDATE `$tblBppi` a, (
+                        SELECT a.ID, b.ID as STLGN_ID, a.TANGGAL,
                         IF((a.JUMLAH - a.AKUMBAYAR - a.DISKON) >= a.ANGPLAN, a.ANGPLAN, a.JUMLAH - a.AKUMBAYAR - a.DISKON) AS bayar,
                         (a.JUMLAH - a.AKUMBAYAR - a.DISKON) AS TOTAL_HUTANG, a.XANGSUR, a.XRANGSUR
-                        FROM spd_bppi a
-                        JOIN spd_stlgn b ON (b.ID = a.STLGN_ID OR b.NO_PDAM = a.NO_PDAM) 
-                        JOIN spd_rekening c ON c.STLGN_ID = b.ID AND c.PERIODE = :cur_periode AND c.STATUS <> 'L'
-                        WHERE a.AKUMBAYAR < a.JUMLAH AND a.IS_DELETE = 0 AND a.XANGSUR > 0 AND a.ANGPLAN > 0
+                        FROM `$tblBppi` a
+                        JOIN `$tblStlgn` b ON (b.ID = a.STLGN_ID OR b.NO_PDAM = a.NO_PDAM) 
+                        JOIN `$tblRekening` c ON c.STLGN_ID = b.ID AND c.PERIODE = :cur_periode AND c.STATUS <> 'L'
+                        WHERE a.IS_DELETE = 0 AND a.XANGSUR > 0 AND a.AKUMBAYAR < a.JUMLAH AND a.ANGPLAN > 0
+                    ) b
+                    SET a.AKUMBAYAR = a.AKUMBAYAR + b.bayar,
+                        a.XRANGSUR = a.XRANGSUR + 1
+                    WHERE a.ID = b.ID
+                ";
+                $stmtBppi = $pdo->prepare($sqlBppi);
+                $stmtBppi->execute(['cur_periode' => $periodeBerjalan]);
+                $jmlBppiUpdated = $stmtBppi->rowCount();
+                $log("   - Update $tblBppi: $jmlBppiUpdated baris angsuran BPPI diperbarui.");
+            } else {
+                $log("   - Info: Tabel BPPI tidak ditemukan di database ini (dilewati).");
+            }
 
-                        UNION ALL
-                        SELECT a.STLGN_ID, a.TANGGAL, 
+            // E. Update PIDENDA (jika tabel ada)
+            if (checkPipelineTableExists($pdo, 'spd_pidenda')) {
+                $sqlPidenda = "
+                    UPDATE `$tblPidenda` a, (
+                        SELECT a.ID, a.STLGN_ID, a.TANGGAL, 
                         IF((a.JUMLAH - a.AKUMBAYAR) >= a.ANGPLAN, a.ANGPLAN, a.JUMLAH - a.AKUMBAYAR) AS bayar,
                         (a.JUMLAH - a.AKUMBAYAR) AS TOTAL_HUTANG, a.XANGSUR, a.XRLANG
-                        FROM spd_pidenda a
-                        JOIN spd_stlgn b ON b.ID = a.STLGN_ID 
-                        JOIN spd_rekening c ON c.STLGN_ID = b.ID AND c.PERIODE = :cur_periode AND c.STATUS <> 'L'
-                        WHERE a.AKUMBAYAR < a.JUMLAH AND a.IS_DELETE = 0 AND a.XANGSUR > 0 AND a.ANGPLAN > 0
-                    ) a
-                    GROUP BY STLGN_ID
-                ) b 
-                SET a.NON_AIR = b.bayar 
-                WHERE a.STLGN_ID = b.STLGN_ID AND a.PERIODE = :next_periode
-            ";
-            $stmtNonAir = $pdo->prepare($sqlNonAir);
-            $stmtNonAir->execute([
-                'cur_periode' => $periodeBerjalan,
-                'next_periode' => $nextPeriode
-            ]);
-            $jmlNonAirUpdated = $stmtNonAir->rowCount();
-            $log("   - Update NON_AIR pada SPD_REKENING ($nextPeriode): $jmlNonAirUpdated rekening terupdate.");
+                        FROM `$tblPidenda` a
+                        JOIN `$tblStlgn` b ON b.ID = a.STLGN_ID
+                        JOIN `$tblRekening` c ON c.STLGN_ID = b.ID AND c.PERIODE = :cur_periode AND c.STATUS <> 'L'
+                        WHERE a.IS_DELETE = 0 AND a.XANGSUR > 0 AND a.AKUMBAYAR < a.JUMLAH AND a.ANGPLAN > 0
+                    ) b
+                    SET a.AKUMBAYAR = a.AKUMBAYAR + b.bayar,
+                        a.XRLANG = a.XRLANG + 1
+                    WHERE a.ID = b.ID
+                ";
+                $stmtPidenda = $pdo->prepare($sqlPidenda);
+                $stmtPidenda->execute(['cur_periode' => $periodeBerjalan]);
+                $jmlPidendaUpdated = $stmtPidenda->rowCount();
+                $log("   - Update $tblPidenda: $jmlPidendaUpdated baris angsuran denda diperbarui.");
+            } else {
+                $log("   - Info: Tabel PIDENDA tidak ditemukan di database ini (dilewati).");
+            }
+
+            // F. Memasukkan NON_AIR ke tabel SPD_REKENING periode baru ($nextPeriode)
+            $unionParts = [];
+            if (checkPipelineTableExists($pdo, 'spd_bppi')) {
+                $unionParts[] = "
+                    SELECT ifnull(a.STLGN_ID, b.ID) AS STLGN_ID, a.TANGGAL, 
+                    IF((a.JUMLAH - a.AKUMBAYAR - a.DISKON) >= a.ANGPLAN, a.ANGPLAN, a.JUMLAH - a.AKUMBAYAR - a.DISKON) AS bayar,
+                    (a.JUMLAH - a.AKUMBAYAR - a.DISKON) AS TOTAL_HUTANG, a.XANGSUR, a.XRANGSUR
+                    FROM `$tblBppi` a
+                    JOIN `$tblStlgn` b ON (b.ID = a.STLGN_ID OR b.NO_PDAM = a.NO_PDAM) 
+                    JOIN `$tblRekening` c ON c.STLGN_ID = b.ID AND c.PERIODE = :cur_periode AND c.STATUS <> 'L'
+                    WHERE a.AKUMBAYAR < a.JUMLAH AND a.IS_DELETE = 0 AND a.XANGSUR > 0 AND a.ANGPLAN > 0
+                ";
+            }
+            if (checkPipelineTableExists($pdo, 'spd_pidenda')) {
+                $unionParts[] = "
+                    SELECT a.STLGN_ID, a.TANGGAL, 
+                    IF((a.JUMLAH - a.AKUMBAYAR) >= a.ANGPLAN, a.ANGPLAN, a.JUMLAH - a.AKUMBAYAR) AS bayar,
+                    (a.JUMLAH - a.AKUMBAYAR) AS TOTAL_HUTANG, a.XANGSUR, a.XRLANG
+                    FROM `$tblPidenda` a
+                    JOIN `$tblStlgn` b ON b.ID = a.STLGN_ID 
+                    JOIN `$tblRekening` c ON c.STLGN_ID = b.ID AND c.PERIODE = :cur_periode AND c.STATUS <> 'L'
+                    WHERE a.AKUMBAYAR < a.JUMLAH AND a.IS_DELETE = 0 AND a.XANGSUR > 0 AND a.ANGPLAN > 0
+                ";
+            }
+
+            if (!empty($unionParts)) {
+                $unionSql = implode(" UNION ALL ", $unionParts);
+                $sqlNonAir = "
+                    UPDATE `$tblRekening` a, (
+                        SELECT a.STLGN_ID, SUM(a.bayar) AS bayar, SUM(TOTAL_HUTANG) AS TOTAL_HUTANG, a.XANGSUR, a.XRANGSUR
+                        FROM (
+                            $unionSql
+                        ) a
+                        GROUP BY STLGN_ID
+                    ) b 
+                    SET a.NON_AIR = b.bayar 
+                    WHERE a.STLGN_ID = b.STLGN_ID AND a.PERIODE = :next_periode
+                ";
+                $stmtNonAir = $pdo->prepare($sqlNonAir);
+                $stmtNonAir->execute([
+                    'cur_periode' => $periodeBerjalan,
+                    'next_periode' => $nextPeriode
+                ]);
+                $jmlNonAirUpdated = $stmtNonAir->rowCount();
+                $log("   - Update NON_AIR pada $tblRekening ($nextPeriode): $jmlNonAirUpdated rekening terupdate.");
+            } else {
+                $log("   - Update NON_AIR: Tidak ada tabel angsuran BPPI/PIDENDA (dilewati).");
+            }
 
             // G. Panggil Stored Procedure insert_rekang
             $lastDayNext = date('t', strtotime("{$nextTahun}-{$nextBulan}-01"));
