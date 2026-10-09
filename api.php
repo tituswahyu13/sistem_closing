@@ -1624,82 +1624,60 @@ if ($action === 'beli' || $action === 'batal') {
     }
 } elseif ($action === 'check_rumah_ibadah_status') {
     try {
-        // Cek pdam.ppob
+        // 1. Statistik PPOB untuk Rumah Ibadah
         $stmtPpob = $pdo->query("
-            SELECT FLAG, COUNT(*) as jml, SUM(TOTTAG) as total_tagihan
+            SELECT 
+                FLAG,
+                COUNT(*) as jml,
+                SUM(TOTTAG) as total_tagihan,
+                MIN(BLNTAG) as min_periode,
+                MAX(BLNTAG) as max_periode
             FROM `pdam`.`ppob` 
             WHERE GOL LIKE '%(IB%' OR GOL LIKE '%(IB1%' OR GOL LIKE '%(IB2%' OR GOL LIKE '%(IB3%' OR IDLGN = '12010151'
             GROUP BY FLAG
         ");
         $ppobStats = $stmtPpob ? $stmtPpob->fetchAll(PDO::FETCH_ASSOC) : [];
 
-        // Sample ppob
+        // 2. Breakdown per Golongan di PPOB
+        $stmtGol = $pdo->query("
+            SELECT 
+                GOL,
+                FLAG,
+                COUNT(*) as jml,
+                SUM(TOTTAG) as total_tagihan
+            FROM `pdam`.`ppob` 
+            WHERE GOL LIKE '%(IB%' OR IDLGN = '12010151'
+            GROUP BY GOL, FLAG
+            ORDER BY GOL ASC, FLAG ASC
+        ");
+        $golStats = $stmtGol ? $stmtGol->fetchAll(PDO::FETCH_ASSOC) : [];
+
+        // 3. Sample 10 Data PPOB Rumah Ibadah
         $stmtSamplePpob = $pdo->query("
-            SELECT IDLGN, NAMA, GOL, BLNTAG, FLAG, TGL_LUNAS, TIME_LUNAS, TOTTAG
+            SELECT IDLGN, NAMA, GOL, BLNTAG, REK, FLAG, TGL_LUNAS, TIME_LUNAS, TOTTAG
             FROM `pdam`.`ppob`
             WHERE GOL LIKE '%(IB%' OR IDLGN = '12010151'
-            LIMIT 5
+            ORDER BY BLNTAG DESC, IDLGN ASC
+            LIMIT 10
         ");
         $samplePpob = $stmtSamplePpob ? $stmtSamplePpob->fetchAll(PDO::FETCH_ASSOC) : [];
 
-        // Cek spd_rekening
-        $stmtRek = $pdo->query("
-            SELECT a.PERIODE, a.STATUS, a.FLAG, COUNT(*) as jml, SUM(a.RK + a.NON_AIR + a.MATERAI) as total_tagihan
-            FROM spd_rekening a
-            JOIN spd_stgol b ON b.ID = a.STGOL_ID
-            WHERE b.ID IN ('IB1', 'IB2', 'IB3') OR a.NO_PDAM = '12010151'
-            GROUP BY a.PERIODE, a.STATUS, a.FLAG
-            ORDER BY a.PERIODE DESC
+        // 4. Sample Rumah Ibadah yang masih FLAG != 9 (jika ada)
+        $stmtUnpaid = $pdo->query("
+            SELECT IDLGN, NAMA, GOL, BLNTAG, REK, FLAG, TOTTAG
+            FROM `pdam`.`ppob`
+            WHERE (GOL LIKE '%(IB%' OR IDLGN = '12010151') AND FLAG != 9
             LIMIT 10
         ");
-        $rekStats = $stmtRek ? $stmtRek->fetchAll(PDO::FETCH_ASSOC) : [];
-
-        // Sample spd_rekening periode 202608 & 202609
-        $stmtSampleRek = $pdo->query("
-            SELECT a.PERIODE, a.NO_PDAM, b.NAMA, a.STGOL_ID, a.STATUS, a.FLAG, (a.RK + a.NON_AIR + a.MATERAI) as total
-            FROM spd_rekening a
-            JOIN spd_stlgn b ON b.ID = a.STLGN_ID
-            WHERE a.STGOL_ID IN ('IB1', 'IB2', 'IB3') OR a.NO_PDAM = '12010151'
-            ORDER BY a.PERIODE DESC, a.NO_PDAM ASC
-            LIMIT 10
-        ");
-        $sampleRek = $stmtSampleRek ? $stmtSampleRek->fetchAll(PDO::FETCH_ASSOC) : [];
-
-        // Detail sampel spd_tagrek ONLINE = 9 di 202607
-        $stmtSampleTagrek07 = $pdo->query("
-            SELECT *
-            FROM spd_tagrek
-            WHERE REKENING_BULAN = '202607' AND ONLINE = 9
-            LIMIT 5
-        ");
-        $sampleTagrek07 = $stmtSampleTagrek07 ? $stmtSampleTagrek07->fetchAll(PDO::FETCH_ASSOC) : [];
-
-        // Cek juga spd_tagrek untuk 202608
-        $stmtSampleTagrek08 = $pdo->query("
-            SELECT a.ONLINE, COUNT(*) as jml, SUM(a.JUMLAH) as total
-            FROM spd_tagrek a
-            WHERE a.REKENING_BULAN = '202608'
-            GROUP BY a.ONLINE
-        ");
-        $tagrek08Stats = $stmtSampleTagrek08 ? $stmtSampleTagrek08->fetchAll(PDO::FETCH_ASSOC) : [];
-
-        // Cek triggers pada pdam dan simpadu
-        $stmtTrig = $pdo->query("
-            SELECT TRIGGER_SCHEMA, TRIGGER_NAME, EVENT_MANIPULATION, EVENT_OBJECT_TABLE, ACTION_STATEMENT
-            FROM information_schema.TRIGGERS
-            WHERE TRIGGER_SCHEMA IN ('pdam', 'simpadu')
-        ");
-        $triggers = $stmtTrig ? $stmtTrig->fetchAll(PDO::FETCH_ASSOC) : [];
+        $unpaidSample = $stmtUnpaid ? $stmtUnpaid->fetchAll(PDO::FETCH_ASSOC) : [];
 
         echo json_encode([
             "status" => "success",
             "ppob_stats" => $ppobStats,
+            "gol_stats" => $golStats,
             "sample_ppob" => $samplePpob,
-            "rekening_stats" => $rekStats,
-            "sample_rekening" => $sampleRek,
-            "sample_tagrek_202607_online9" => $sampleTagrek07,
-            "tagrek_202608_all_online" => $tagrek08Stats,
-            "triggers" => $triggers
+            "unpaid_sample" => $unpaidSample,
+            "unpaid_count" => count($unpaidSample)
         ]);
     } catch (Exception $e) {
         http_response_code(500);
