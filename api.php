@@ -1477,24 +1477,7 @@ if ($action === 'beli' || $action === 'batal') {
             WHERE batch_id LIKE 'BATCH_REK_%' AND status = 'RUNNING' AND TIMESTAMPDIFF(MINUTE, waktu_mulai, NOW()) > 15
         ");
 
-        // Konsolidasikan step sukses ke batch utama dan bersihkan log transient retry
-        try {
-            $pdo->exec("
-                UPDATE pipeline_log 
-                SET batch_id = 'BATCH_REK_20261008_114956_7d9227'
-                WHERE batch_id = 'BATCH_REK_20261008_120245_4d0933' AND status = 'SUCCESS'
-            ");
-            $pdo->exec("
-                DELETE FROM pipeline_log 
-                WHERE batch_id IN ('BATCH_REK_20261008_120346_137fb0', 'BATCH_REK_20261008_120023_3402c6')
-                   OR id IN (41, 42)
-            ");
-            $pdo->exec("
-                UPDATE rekening_config 
-                SET status = 'SUCCESS', pesan_terakhir = 'Closing Rekening Sukses Penuh (6/6 Tahap)'
-                WHERE periode = '202609' OR id = 2
-            ");
-        } catch (Exception $e) {}
+
 
         $limit = intval($_GET['limit'] ?? 50);
         $stmt = $pdo->prepare("

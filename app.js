@@ -2860,23 +2860,49 @@ async function triggerDueRekeningCronCheck() {
         const json = await res.json();
 
         if (json.status === 'executed') {
+            const isSuccess = json.data && json.data.success;
             const timerEl = document.getElementById('rekening-countdown-timer');
-            if (timerEl) timerEl.textContent = 'SELESAI';
-            if (detailEl) detailEl.textContent = json.message || 'Eksekusi closing rekening otomatis sukses dijalankan!';
-            if (badgeEl) {
-                badgeEl.className = 'badge badge-success';
-                badgeEl.innerHTML = '<i class="ph ph-check-circle"></i> SUKSES DIEKSEKUSI';
+
+            if (isSuccess) {
+                if (timerEl) timerEl.textContent = 'SELESAI';
+                if (detailEl) detailEl.textContent = json.message || 'Eksekusi closing rekening otomatis sukses dijalankan!';
+                if (badgeEl) {
+                    badgeEl.className = 'badge badge-success';
+                    badgeEl.innerHTML = '<i class="ph ph-check-circle"></i> SUKSES DIEKSEKUSI';
+                }
+                if (pipelineRekeningLiveIndicator) {
+                    pipelineRekeningLiveIndicator.textContent = 'COMPLETED';
+                    pipelineRekeningLiveIndicator.className = 'badge badge-success';
+                }
+                if (pipelineRekeningConsoleOutput && json.data && json.data.logs) {
+                    pipelineRekeningConsoleOutput.textContent = json.data.logs.join('\n');
+                }
+                stopRekeningStopwatch('Selesai');
+                updateRekeningProgressUI(5, 'SUCCESS', 'Closing Rekening Terjadwal Sukses Penuh (6/6 Tahap)', true);
+                showNotification('Sukses', 'Closing Rekening Terjadwal Sukses Penuh!', 'success');
+            } else {
+                const errMsg = (json.data && json.data.error) || json.message || 'Eksekusi closing rekening otomatis gagal.';
+                if (timerEl) timerEl.textContent = 'GAGAL';
+                if (detailEl) detailEl.textContent = errMsg;
+                if (badgeEl) {
+                    badgeEl.className = 'badge badge-danger';
+                    badgeEl.innerHTML = '<i class="ph ph-x-circle"></i> GAGAL DIEKSEKUSI';
+                }
+                if (pipelineRekeningLiveIndicator) {
+                    pipelineRekeningLiveIndicator.textContent = 'FAILED';
+                    pipelineRekeningLiveIndicator.className = 'badge badge-danger';
+                }
+                if (pipelineRekeningConsoleOutput) {
+                    if (json.data && json.data.logs && json.data.logs.length > 0) {
+                        pipelineRekeningConsoleOutput.textContent = json.data.logs.join('\n');
+                    } else {
+                        pipelineRekeningConsoleOutput.textContent += `\n>>> [ERROR] ${errMsg}\n`;
+                    }
+                }
+                stopRekeningStopwatch('Gagal');
+                updateRekeningProgressUI(2, 'FAILED', errMsg, false);
+                showNotification('Gagal', errMsg, 'danger');
             }
-            if (pipelineRekeningLiveIndicator) {
-                pipelineRekeningLiveIndicator.textContent = 'COMPLETED';
-                pipelineRekeningLiveIndicator.className = 'badge badge-success';
-            }
-            if (pipelineRekeningConsoleOutput && json.data && json.data.logs) {
-                pipelineRekeningConsoleOutput.textContent = json.data.logs.join('\n');
-            }
-            stopRekeningStopwatch('Selesai');
-            updateRekeningProgressUI(5, 'SUCCESS', 'Closing Rekening Terjadwal Sukses Penuh (6/6 Tahap)', true);
-            showNotification('Sukses', 'Closing Rekening Terjadwal Sukses Penuh!', 'success');
             await loadRekeningPipelineLogs();
             await loadRekeningConfig();
         } else {
@@ -2887,6 +2913,13 @@ async function triggerDueRekeningCronCheck() {
     } catch (err) {
         stopRekeningStopwatch('Error');
         console.error('Error auto-trigger closing rekening:', err);
+        const detailEl = document.getElementById('rekening-countdown-detail');
+        const badgeEl = document.getElementById('pipeline-rekening-status-badge');
+        if (detailEl) detailEl.textContent = 'Gagal memanggil eksekusi jadwal: ' + err.message;
+        if (badgeEl) {
+            badgeEl.className = 'badge badge-danger';
+            badgeEl.innerHTML = '<i class="ph ph-x-circle"></i> KESALAHAN JARINGAN';
+        }
     } finally {
         isCheckingRekeningCron = false;
     }
