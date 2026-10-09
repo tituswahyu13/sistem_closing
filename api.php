@@ -1508,6 +1508,10 @@ if ($action === 'beli' || $action === 'batal') {
 
         $hasActiveBatch = false;
         foreach ($batches as $bId => &$bInfo) {
+            usort($bInfo['steps'], function($a, $b) {
+                return intval($a['step']) - intval($b['step']);
+            });
+
             $hasFail = false;
             $hasRun = false;
             foreach ($bInfo['steps'] as $st) {

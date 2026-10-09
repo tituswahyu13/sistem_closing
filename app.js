@@ -2832,27 +2832,7 @@ async function triggerDueRekeningCronCheck() {
 
         // Poller for live step progress
         let poller = setInterval(async () => {
-            try {
-                const res = await fetch('api.php?action=get_rekening_pipeline_logs&limit=5');
-                const json = await res.json();
-                if (json.status === 'success' && json.batches && json.batches.length > 0) {
-                    const cur = json.batches[0];
-                    if (cur && cur.steps) {
-                        cur.steps.forEach(st => {
-                            const stepNum = parseInt(st.step, 10);
-                            if (stepNum >= 0 && stepNum <= 5) {
-                                const dur = st.durasi_detik ? `${st.durasi_detik}s` : '0s';
-                                const timeStr = st.waktu_mulai ? st.waktu_mulai.split(' ')[1] : '';
-                                updateRekeningStepCardUI(stepNum, st.status, `${dur} | ${timeStr}`);
-                            }
-                        });
-                        const lastStep = cur.steps[cur.steps.length - 1];
-                        if (lastStep) {
-                            updateRekeningProgressUI(parseInt(lastStep.step, 10), lastStep.status, null);
-                        }
-                    }
-                }
-            } catch (e) {}
+            await loadRekeningPipelineLogs();
         }, 1500);
 
         const res = await fetch('api.php?action=check_rekening_cron');
