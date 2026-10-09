@@ -2706,7 +2706,7 @@ if ($action === 'beli' || $action === 'batal') {
         $rows = $stmtData->fetchAll(PDO::FETCH_ASSOC);
 
         // Get filter options
-        $lokbayOptions = $pdo->query("SELECT DISTINCT ID, NAMA FROM spd_lokbay ORDER BY ID")->fetchAll();
+        $lokbayOptions = $pdo->query("SELECT DISTINCT ID, LOKASI FROM spd_lokbay ORDER BY ID")->fetchAll();
         $stgolOptions = $pdo->query("SELECT DISTINCT ID, KETERANGAN FROM spd_stgol ORDER BY ID")->fetchAll();
 
         echo json_encode([

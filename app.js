@@ -4698,7 +4698,7 @@ async function loadUncontrolledRekening(page = 1) {
                     json.filters.lokbay.forEach(opt => {
                         const el = document.createElement('option');
                         el.value = opt.ID;
-                        el.textContent = `${opt.ID} - ${opt.NAMA}`;
+                        el.textContent = `${opt.ID} - ${opt.LOKASI || opt.NAMA || opt.ID}`;
                         lokbaySelect.appendChild(el);
                     });
                 }
