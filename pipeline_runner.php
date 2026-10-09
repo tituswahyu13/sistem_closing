@@ -1132,7 +1132,7 @@ function executeClosingRekeningPipeline($params = []) {
                 // 2. Insert Tagihan Berjalan ke pdam.ppob
                 recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start, null, 'Mengeksekusi [Query 2/4]: INSERT INTO pdam.ppob (Tagihan Rekening Aktif ' . $periodeBerjalan . ')...');
                 $sqlPpobTagihan = "
-                    INSERT INTO `pdam`.ppob
+                    INSERT IGNORE INTO `pdam`.ppob
                     SELECT a.NO_PDAM, LEFT(b.NAMA, 30) AS NAMA, LEFT(b.ALAMAT, 50) AS ALAMAT, LEFT(concat(c.KETERANGAN, ' (', a.STGOL_ID, ')'), 40) AS GOL,
                     IF(a.EDITMETER = 0, a.METER, a.EDITMETER) AS MTRINI, a.METERLALU, a.VOLUME_TAGIHAN AS PAKAI, (a.RK + a.MATERAI) AS TAGAIR, a.NON_AIR AS TAGNONAIR,
                     IFNULL(concat('(', d.XANGSUR, '/', d.XRLANG, ')'), 0) AS ANGS_KE, 0 AS DENDA, a.SUBSIDI AS SUBSIDI, (a.RK + a.NON_AIR + a.MATERAI - a.SUBSIDI) AS TOTTAG, 
@@ -1151,6 +1151,7 @@ function executeClosingRekeningPipeline($params = []) {
                     ) d ON d.STLGN_ID = a.STLGN_ID
                     JOIN spd_lokbay e ON e.ID = a.LOKBAY_ID
                     WHERE a.PERIODE = :periode_tagihan AND a.`STATUS` NOT IN ('L') AND e.PPOB = 3 AND a.FLAG = 0
+                    GROUP BY a.NO_PDAM
                 ";
                 $stmtPpobTag = $pdo->prepare($sqlPpobTagihan);
                 $stmtPpobTag->execute([
@@ -1163,7 +1164,7 @@ function executeClosingRekeningPipeline($params = []) {
                 // 3. Insert Tunggakan ke pdam.ppob
                 recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start, null, 'Mengeksekusi [Query 3/4]: INSERT INTO pdam.ppob (Tunggakan Rekening)...');
                 $sqlPpobTunggakan = "
-                    INSERT INTO `pdam`.ppob
+                    INSERT IGNORE INTO `pdam`.ppob
                     SELECT a.NO_PDAM, LEFT(b.NAMA, 30) AS NAMA, LEFT(b.ALAMAT, 50) AS ALAMAT,
                     LEFT(concat(c.KETERANGAN, ' (', a.STGOL_ID, ')'), 40) AS GOL,
                     ifnull(d.MTRINI, 0) AS MTRINI, ifnull(d.METERLALU, 0) AS METERLALU, ifnull(d.PAKAI, 0) AS PAKAI,
@@ -1193,7 +1194,7 @@ function executeClosingRekeningPipeline($params = []) {
                     ) f ON f.STLGN_ID = a.STLGN_ID
                     JOIN spd_lokbay g ON g.ID = b.LOKBAY_ID
                     WHERE a.LUNAS = 0 AND g.PPOB = 3 AND a.IS_DELETE = 0 AND a.PH IS NULL
-                    GROUP BY a.REKENING_BULAN, a.STLGN_ID
+                    GROUP BY a.NO_PDAM, date_format(date_sub(a.REKENING_BULAN, INTERVAL -1 MONTH), '%Y%m')
                     ORDER BY a.REKENING_BULAN
                 ";
                 $stmtPpobTung = $pdo->prepare($sqlPpobTunggakan);
@@ -1207,7 +1208,7 @@ function executeClosingRekeningPipeline($params = []) {
 
                 // Hankam LOKBAY_ID = 'A'
                 $sqlHankamA = "
-                    INSERT INTO `pdam`.hankam (
+                    INSERT IGNORE INTO `pdam`.hankam (
                         MATRA_KESATUAN, NAMA_SATKER, NOSAMB, NAMA, ALAMAT, KODE_GOL, GOLONGAN, PERIODE,
                         STAN_LALU, STAN_KINI, STAN_ANGKAT, PAKAI, TAGIHAN, ADMINISTRASI, PEMELIHARAAN,
                         MATERAI, ANGSURAN, TOTAL_TAGIHAN 
@@ -1229,7 +1230,7 @@ function executeClosingRekeningPipeline($params = []) {
 
                 // Hankam LOKBAY_ID = 'M' (AKMIL)
                 $sqlHankamM = "
-                    INSERT INTO `pdam`.hankam (
+                    INSERT IGNORE INTO `pdam`.hankam (
                         MATRA_KESATUAN, NAMA_SATKER, NOSAMB, NAMA, ALAMAT, KODE_GOL, GOLONGAN, PERIODE,
                         STAN_LALU, STAN_KINI, STAN_ANGKAT, PAKAI, TAGIHAN, ADMINISTRASI, PEMELIHARAAN,
                         MATERAI, ANGSURAN, TOTAL_TAGIHAN 
@@ -1249,7 +1250,7 @@ function executeClosingRekeningPipeline($params = []) {
 
                 // Hankam LOKBAY_ID = 'MA'
                 $sqlHankamMA = "
-                    INSERT INTO `pdam`.hankam (
+                    INSERT IGNORE INTO `pdam`.hankam (
                         MATRA_KESATUAN, NAMA_SATKER, NOSAMB, NAMA, ALAMAT, KODE_GOL, GOLONGAN, PERIODE,
                         STAN_LALU, STAN_KINI, STAN_ANGKAT, PAKAI, TAGIHAN, ADMINISTRASI, PEMELIHARAAN,
                         MATERAI, ANGSURAN, TOTAL_TAGIHAN 
