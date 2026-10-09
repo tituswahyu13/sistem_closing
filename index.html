@@ -1379,6 +1379,29 @@
                         </div>
                     </div>
 
+                    <!-- Dedicated Audit Subtabs Navigation Bar -->
+                    <div class="audit-subtabs-nav mt-4" id="audit-subtabs-nav">
+                        <button type="button" class="subtab-btn active" data-audit-tab="uncontrolled" id="tab-btn-uncontrolled">
+                            <i class="ph ph-gauge"></i>
+                            <span>1. Rekening Belum Kontrol</span>
+                            <span class="badge badge-warning" id="subtab-badge-uncontrolled">0</span>
+                        </button>
+                        <button type="button" class="subtab-btn" data-audit-tab="tagihan" id="tab-btn-tagihan">
+                            <i class="ph ph-receipt"></i>
+                            <span>2. Integritas PPOB & Tagihan</span>
+                            <span class="badge badge-success" id="subtab-badge-tagihan">0</span>
+                        </button>
+                        <button type="button" class="subtab-btn" data-audit-tab="angsuran" id="tab-btn-angsuran">
+                            <i class="ph ph-money"></i>
+                            <span>3. Duplikasi Angsuran</span>
+                            <span class="badge badge-success" id="subtab-badge-angsuran">0</span>
+                        </button>
+                        <button type="button" class="subtab-btn" data-audit-tab="anomali_admin" id="tab-btn-anomali-admin">
+                            <i class="ph ph-file-x"></i>
+                            <span>4. Anomali Administrasi</span>
+                            <span class="badge badge-success" id="subtab-badge-anomali-admin">0</span>
+                        </button>
+                    </div>
 
                     <!-- Sub-Panel 1: Rekening Belum Dikontrol -->
                     <div class="audit-subpanel mt-4" id="audit-subpanel-uncontrolled">
@@ -2596,7 +2619,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=20261009_1045"></script>
+    <script src="app.js?v=20261009_1050"></script>
 </body>
 </html>
 

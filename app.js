@@ -4732,6 +4732,15 @@ let currentAuditSubtab = 'uncontrolled';
 function switchAuditSubtab(subtabId) {
     currentAuditSubtab = subtabId;
     
+    // Toggle active state on subtab buttons
+    document.querySelectorAll('[data-audit-tab]').forEach(btn => {
+        if (btn.getAttribute('data-audit-tab') === subtabId) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
     // Toggle active state on top KPI cards
     const cardMap = {
         'uncontrolled': ['card-kpi-uncontrolled'],
@@ -4762,6 +4771,17 @@ function switchAuditSubtab(subtabId) {
     if (panelTagihan) panelTagihan.style.display = (subtabId === 'tagihan') ? 'flex' : 'none';
     if (panelAngsuran) panelAngsuran.style.display = (subtabId === 'angsuran') ? 'flex' : 'none';
     if (panelAnomaliAdmin) panelAnomaliAdmin.style.display = (subtabId === 'anomali_admin') ? 'flex' : 'none';
+
+    // Auto-load data for active tab
+    if (subtabId === 'uncontrolled') {
+        loadUncontrolledRekening(uncontrolledCurrentPage);
+    } else if (subtabId === 'tagihan') {
+        loadTagihanDuplicates();
+    } else if (subtabId === 'angsuran') {
+        loadAngsuranDuplicates();
+    } else if (subtabId === 'anomali_admin') {
+        loadAnomaliAngsuranAdmin();
+    }
 }
 
 // Load Audit Summary
