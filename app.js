@@ -3645,11 +3645,18 @@ async function runSingleRekeningStep(stepNumber) {
     }
 }
 
-document.querySelectorAll('.btn-test-rekening-step').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        const step = parseInt(e.currentTarget.getAttribute('data-step'), 10);
+window.runSingleRekeningStep = runSingleRekeningStep;
+
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-test-rekening-step');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const stepAttr = btn.getAttribute('data-step');
+    const step = parseInt(stepAttr, 10);
+    if (!isNaN(step)) {
         runSingleRekeningStep(step);
-    });
+    }
 });
 if (btnRefreshRekeningLogs) {
     btnRefreshRekeningLogs.addEventListener('click', loadRekeningPipelineLogs);
