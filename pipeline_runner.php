@@ -1121,6 +1121,67 @@ function executeClosingRekeningPipeline($params = []) {
                 $pdo->exec("SET SESSION sql_mode = ''");
             } catch (Exception $e) {}
 
+            // Pre-Audit Validasi Duplikasi sebelum insert ke pdam.ppob
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start, null, 'Menjalankan Audit Validasi Pra-Transfer PPOB...');
+            $log("   - Menjalankan audit validasi integritas data PPOB...");
+
+            // 1. Cek duplikasi di Tagihan Berjalan (spd_rekening)
+            $cekDupRek = $pdo->prepare("
+                SELECT a.NO_PDAM, b.NAMA, COUNT(*) as jml_kembar
+                FROM spd_rekening a
+                JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+                JOIN spd_lokbay e ON e.ID = a.LOKBAY_ID
+                WHERE a.PERIODE = :periode AND a.`STATUS` NOT IN ('L') AND e.PPOB = 3 AND a.FLAG = 0
+                GROUP BY a.NO_PDAM
+                HAVING COUNT(*) > 1
+            ");
+            $cekDupRek->execute(['periode' => $periodeBerjalan]);
+            $dupRekList = $cekDupRek->fetchAll(PDO::FETCH_ASSOC);
+            if (!empty($dupRekList)) {
+                $rincian = array_map(function($d) { return "{$d['NO_PDAM']} ({$d['NAMA']} - {$d['jml_kembar']}x)"; }, array_slice($dupRekList, 0, 5));
+                throw new Exception("Audit Gagal: Ditemukan " . count($dupRekList) . " nomor pelanggan duplikat di Tagihan Berjalan (spd_rekening): " . implode(', ', $rincian));
+            }
+
+            // 2. Cek duplikasi di Tunggakan (spd_tunggak) berdasarkan BLNTAG PPOB
+            $cekDupTung = $pdo->query("
+                SELECT a.NO_PDAM, b.NAMA, DATE_FORMAT(DATE_SUB(a.REKENING_BULAN, INTERVAL -1 MONTH), '%Y%m') as blntag, COUNT(*) as jml_kembar
+                FROM spd_tunggak a
+                JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+                JOIN spd_lokbay g ON g.ID = b.LOKBAY_ID
+                WHERE a.LUNAS = 0 AND g.PPOB = 3 AND a.IS_DELETE = 0 AND a.PH IS NULL
+                GROUP BY a.NO_PDAM, DATE_FORMAT(DATE_SUB(a.REKENING_BULAN, INTERVAL -1 MONTH), '%Y%m')
+                HAVING COUNT(*) > 1
+            ");
+            $dupTungList = $cekDupTung->fetchAll(PDO::FETCH_ASSOC);
+            if (!empty($dupTungList)) {
+                $rincian = array_map(function($d) { return "{$d['NO_PDAM']} (BLNTAG: {$d['blntag']} - {$d['jml_kembar']}x)"; }, array_slice($dupTungList, 0, 5));
+                throw new Exception("Audit Gagal: Ditemukan " . count($dupTungList) . " tunggakan duplikat pada bulan penagihan yang sama di spd_tunggak: " . implode(', ', $rincian));
+            }
+
+            // 3. Cek duplikasi Silang antara Tagihan Berjalan vs Tunggakan
+            $cekDupSilang = $pdo->prepare("
+                SELECT a.NO_PDAM, b.NAMA
+                FROM spd_rekening a
+                JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+                JOIN spd_lokbay e ON e.ID = a.LOKBAY_ID
+                JOIN spd_tunggak t ON t.NO_PDAM = a.NO_PDAM 
+                    AND DATE_FORMAT(DATE_SUB(t.REKENING_BULAN, INTERVAL -1 MONTH), '%Y%m') = :blntag
+                    AND t.LUNAS = 0 AND t.IS_DELETE = 0 AND t.PH IS NULL
+                WHERE a.PERIODE = :periode AND a.`STATUS` NOT IN ('L') AND e.PPOB = 3 AND a.FLAG = 0
+                GROUP BY a.NO_PDAM
+            ");
+            $cekDupSilang->execute([
+                'periode' => $periodeBerjalan,
+                'blntag' => $nextPeriode
+            ]);
+            $dupSilangList = $cekDupSilang->fetchAll(PDO::FETCH_ASSOC);
+            if (!empty($dupSilangList)) {
+                $rincian = array_map(function($d) { return "{$d['NO_PDAM']} ({$d['NAMA']})"; }, array_slice($dupSilangList, 0, 5));
+                throw new Exception("Audit Gagal: Ditemukan " . count($dupSilangList) . " tagihan berjalan yang bentrok dengan tunggakan (BLNTAG: $nextPeriode): " . implode(', ', $rincian));
+            }
+
+            $log("   ✓ Audit integritas data PPOB lolos 100% tanpa duplikasi.");
+
             $pdo->beginTransaction();
 
             try {
@@ -1132,7 +1193,7 @@ function executeClosingRekeningPipeline($params = []) {
                 // 2. Insert Tagihan Berjalan ke pdam.ppob
                 recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start, null, 'Mengeksekusi [Query 2/4]: INSERT INTO pdam.ppob (Tagihan Rekening Aktif ' . $periodeBerjalan . ')...');
                 $sqlPpobTagihan = "
-                    INSERT IGNORE INTO `pdam`.ppob
+                    INSERT INTO `pdam`.ppob
                     SELECT a.NO_PDAM, LEFT(b.NAMA, 30) AS NAMA, LEFT(b.ALAMAT, 50) AS ALAMAT, LEFT(concat(c.KETERANGAN, ' (', a.STGOL_ID, ')'), 40) AS GOL,
                     IF(a.EDITMETER = 0, a.METER, a.EDITMETER) AS MTRINI, a.METERLALU, a.VOLUME_TAGIHAN AS PAKAI, (a.RK + a.MATERAI) AS TAGAIR, a.NON_AIR AS TAGNONAIR,
                     IFNULL(concat('(', d.XANGSUR, '/', d.XRLANG, ')'), 0) AS ANGS_KE, 0 AS DENDA, a.SUBSIDI AS SUBSIDI, (a.RK + a.NON_AIR + a.MATERAI - a.SUBSIDI) AS TOTTAG, 
@@ -1164,7 +1225,7 @@ function executeClosingRekeningPipeline($params = []) {
                 // 3. Insert Tunggakan ke pdam.ppob
                 recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start, null, 'Mengeksekusi [Query 3/4]: INSERT INTO pdam.ppob (Tunggakan Rekening)...');
                 $sqlPpobTunggakan = "
-                    INSERT IGNORE INTO `pdam`.ppob
+                    INSERT INTO `pdam`.ppob
                     SELECT a.NO_PDAM, LEFT(b.NAMA, 30) AS NAMA, LEFT(b.ALAMAT, 50) AS ALAMAT,
                     LEFT(concat(c.KETERANGAN, ' (', a.STGOL_ID, ')'), 40) AS GOL,
                     ifnull(d.MTRINI, 0) AS MTRINI, ifnull(d.METERLALU, 0) AS METERLALU, ifnull(d.PAKAI, 0) AS PAKAI,
@@ -1208,7 +1269,7 @@ function executeClosingRekeningPipeline($params = []) {
 
                 // Hankam LOKBAY_ID = 'A'
                 $sqlHankamA = "
-                    INSERT IGNORE INTO `pdam`.hankam (
+                    INSERT INTO `pdam`.hankam (
                         MATRA_KESATUAN, NAMA_SATKER, NOSAMB, NAMA, ALAMAT, KODE_GOL, GOLONGAN, PERIODE,
                         STAN_LALU, STAN_KINI, STAN_ANGKAT, PAKAI, TAGIHAN, ADMINISTRASI, PEMELIHARAAN,
                         MATERAI, ANGSURAN, TOTAL_TAGIHAN 
@@ -1230,7 +1291,7 @@ function executeClosingRekeningPipeline($params = []) {
 
                 // Hankam LOKBAY_ID = 'M' (AKMIL)
                 $sqlHankamM = "
-                    INSERT IGNORE INTO `pdam`.hankam (
+                    INSERT INTO `pdam`.hankam (
                         MATRA_KESATUAN, NAMA_SATKER, NOSAMB, NAMA, ALAMAT, KODE_GOL, GOLONGAN, PERIODE,
                         STAN_LALU, STAN_KINI, STAN_ANGKAT, PAKAI, TAGIHAN, ADMINISTRASI, PEMELIHARAAN,
                         MATERAI, ANGSURAN, TOTAL_TAGIHAN 
@@ -1250,7 +1311,7 @@ function executeClosingRekeningPipeline($params = []) {
 
                 // Hankam LOKBAY_ID = 'MA'
                 $sqlHankamMA = "
-                    INSERT IGNORE INTO `pdam`.hankam (
+                    INSERT INTO `pdam`.hankam (
                         MATRA_KESATUAN, NAMA_SATKER, NOSAMB, NAMA, ALAMAT, KODE_GOL, GOLONGAN, PERIODE,
                         STAN_LALU, STAN_KINI, STAN_ANGKAT, PAKAI, TAGIHAN, ADMINISTRASI, PEMELIHARAAN,
                         MATERAI, ANGSURAN, TOTAL_TAGIHAN 

@@ -2551,17 +2551,33 @@ if ($action === 'beli' || $action === 'batal') {
         $stmtTagrekDup->execute(['periode' => $periodeTagihan]);
         $cntTagrekDup = (int)$stmtTagrekDup->fetchColumn();
 
-        // 3. Tunggak Duplikat
+        // 3. Tunggak Duplikat (Berdasarkan BLNTAG PPOB)
         $stmtTunggakDup = $pdo->query("
             SELECT COUNT(*) FROM (
                 SELECT a.NO_PDAM
                 FROM spd_tunggak a
-                WHERE a.LUNAS = 0 AND a.IS_DELETE = 0 AND a.PH IS NULL
-                GROUP BY a.NO_PDAM, a.REKENING_BULAN
+                JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+                JOIN spd_lokbay g ON g.ID = b.LOKBAY_ID
+                WHERE a.LUNAS = 0 AND g.PPOB = 3 AND a.IS_DELETE = 0 AND a.PH IS NULL
+                GROUP BY a.NO_PDAM, DATE_FORMAT(DATE_SUB(a.REKENING_BULAN, INTERVAL -1 MONTH), '%Y%m')
                 HAVING COUNT(*) > 1
             ) x
         ");
         $cntTunggakDup = (int)$stmtTunggakDup->fetchColumn();
+
+        // 3b. Rekening Aktif Duplikat
+        $stmtRekDup = $pdo->prepare("
+            SELECT COUNT(*) FROM (
+                SELECT a.NO_PDAM
+                FROM spd_rekening a
+                JOIN spd_lokbay e ON e.ID = a.LOKBAY_ID
+                WHERE a.PERIODE = :periode AND a.`STATUS` NOT IN ('L') AND e.PPOB = 3 AND a.FLAG = 0
+                GROUP BY a.NO_PDAM
+                HAVING COUNT(*) > 1
+            ) x
+        ");
+        $stmtRekDup->execute(['periode' => $periodeRekening]);
+        $cntRekDup = (int)$stmtRekDup->fetchColumn();
 
         // 4. Silang Tagrek vs Tunggak
         $tglStart = substr($periodeTagihan, 0, 4) . '-' . substr($periodeTagihan, 4, 2) . '-01';
@@ -2622,7 +2638,7 @@ if ($action === 'beli' || $action === 'batal') {
 
         // Kesimpulan status
         $readyClosingTagihan = ($cntTagrekDup === 0 && $cntTunggakDup === 0);
-        $readyClosingRekening = ($cntUncontrolled === 0 && $cntAngsurDup === 0 && $cntAnomaliAdmin === 0);
+        $readyClosingRekening = ($cntUncontrolled === 0 && $cntAngsurDup === 0 && $cntAnomaliAdmin === 0 && $cntRekDup === 0);
 
         echo json_encode([
             "status" => "success",
@@ -2631,6 +2647,7 @@ if ($action === 'beli' || $action === 'batal') {
             "metrics" => [
                 "rekening_belum_kontrol" => $cntUncontrolled,
                 "rekening_total" => $cntTotalRekening,
+                "rekening_duplikat" => $cntRekDup,
                 "tagrek_duplikat" => $cntTagrekDup,
                 "tunggak_duplikat" => $cntTunggakDup,
                 "silang_duplikat" => $cntSilangDup,
@@ -2770,15 +2787,16 @@ if ($action === 'beli' || $action === 'batal') {
         $stmtTagrek->execute(['periode' => $reqPeriode]);
         $tagrekDuplicates = $stmtTagrek->fetchAll(PDO::FETCH_ASSOC);
 
-        // 2. Tunggak Duplicates (Direct column group by for maximum index speed)
+        // 2. Tunggak Duplicates (Berdasarkan BLNTAG PPOB)
         $stmtTunggak = $pdo->query("
-            SELECT a.NO_PDAM, b.NAMA, b.ALAMAT, a.REKENING_BULAN as periode, a.LOKBAY_ID, a.STGOL_ID,
+            SELECT a.NO_PDAM, b.NAMA, b.ALAMAT, DATE_FORMAT(DATE_SUB(a.REKENING_BULAN, INTERVAL -1 MONTH), '%Y%m') as periode, a.LOKBAY_ID, a.STGOL_ID,
                    COUNT(*) as jml_kembar, SUM(a.JUMLAH) as tot_tunggak,
                    GROUP_CONCAT(a.ID SEPARATOR ', ') as ids
             FROM spd_tunggak a
             JOIN spd_stlgn b ON b.ID = a.STLGN_ID
-            WHERE a.LUNAS = 0 AND a.IS_DELETE = 0 AND a.PH IS NULL
-            GROUP BY a.NO_PDAM, a.REKENING_BULAN
+            JOIN spd_lokbay g ON g.ID = b.LOKBAY_ID
+            WHERE a.LUNAS = 0 AND g.PPOB = 3 AND a.IS_DELETE = 0 AND a.PH IS NULL
+            GROUP BY a.NO_PDAM, DATE_FORMAT(DATE_SUB(a.REKENING_BULAN, INTERVAL -1 MONTH), '%Y%m')
             HAVING COUNT(*) > 1
             ORDER BY a.NO_PDAM ASC
             LIMIT 100
