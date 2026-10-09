@@ -469,9 +469,9 @@ function executeMasterPipeline($options = []) {
             // Mulai transaksi untuk batch INSERT ke pdam.ppob
             $pdo->beginTransaction();
 
-            // 4c. Insert Tagihan Berjalan dengan INSERT IGNORE & subquery agregasi rekang
+            // 4c. Insert Tagihan Berjalan dengan strict INSERT INTO & subquery agregasi rekang
             $sqlPpobTagrek = "
-            INSERT IGNORE INTO `pdam`.ppob
+            INSERT INTO `pdam`.ppob
             SELECT 
                 a.NO_PDAM, 
                 b.NAMA, 
@@ -517,9 +517,9 @@ function executeMasterPipeline($options = []) {
             $jmlPpobTagrek = $stmtPpob1->rowCount();
             $log("   - Insert Tagihan Berjalan ke pdam.ppob: $jmlPpobTagrek baris.");
 
-            // 4d. Insert Tunggakan dengan INSERT IGNORE, subquery agregasi rekang, & proteksi NOT EXISTS terhadap tagrek aktif
+            // 4d. Insert Tunggakan dengan strict INSERT INTO, subquery agregasi rekang, & proteksi NOT EXISTS terhadap tagrek aktif
             $sqlPpobTunggak = "
-            INSERT IGNORE INTO `pdam`.ppob
+            INSERT INTO `pdam`.ppob
             SELECT 
                 a.NO_PDAM, 
                 b.NAMA, 
@@ -567,7 +567,7 @@ function executeMasterPipeline($options = []) {
                     AND tr.REKENING_BULAN = :periode_rek
                     AND tr.IS_DELETE = 0 AND tr.IS_YKK = 0
               )
-            GROUP BY a.NO_PDAM, a.REKENING_BULAN
+            GROUP BY a.NO_PDAM, DATE_FORMAT(DATE_SUB(a.REKENING_BULAN, INTERVAL -1 MONTH), '%Y%m')
             ORDER BY a.REKENING_BULAN
             ";
             $stmtPpob2 = $pdo->prepare($sqlPpobTunggak);

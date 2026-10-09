@@ -4806,7 +4806,7 @@ async function loadAuditSummary() {
                 badgeTabUncontrolled.className = `badge ${metrics.rekening_belum_kontrol > 0 ? 'badge-warning' : 'badge-success'}`;
             }
             if (badgeTabTagihan) {
-                const totTagihanDup = (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.silang_duplikat || 0);
+                const totTagihanDup = (metrics.rekening_duplikat || 0) + (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.silang_duplikat || 0);
                 badgeTabTagihan.textContent = totTagihanDup.toLocaleString('id-ID');
                 badgeTabTagihan.className = `badge ${totTagihanDup > 0 ? 'badge-danger' : 'badge-success'}`;
             }
@@ -4826,7 +4826,7 @@ async function loadAuditSummary() {
                     overallBadge.className = 'badge badge-success';
                     overallBadge.innerHTML = '<i class="ph ph-shield-check"></i> Siap Closing (Data Bersih)';
                 } else {
-                    const totalIssues = (metrics.rekening_belum_kontrol || 0) + (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.angsuran_duplikat || 0) + (metrics.anomali_angsuran_admin || 0);
+                    const totalIssues = (metrics.rekening_belum_kontrol || 0) + (metrics.rekening_duplikat || 0) + (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.angsuran_duplikat || 0) + (metrics.anomali_angsuran_admin || 0);
                     overallBadge.className = 'badge badge-warning';
                     overallBadge.innerHTML = `<i class="ph ph-warning"></i> Perlu Perhatian (${totalIssues} Anomali)`;
                 }
@@ -4964,8 +4964,9 @@ async function loadUncontrolledRekening(page = 1) {
     }
 }
 
-// Load Tagihan Duplicates (spd_tagrek, spd_tunggak, cross-check)
+// Load Tagihan & Rekening Duplicates (spd_rekening, spd_tagrek, spd_tunggak, cross-check)
 async function loadTagihanDuplicates() {
+    const tbodyRekening = document.getElementById('tbody-rekening-duplicates');
     const tbodyTagrek = document.getElementById('tbody-tagrek-duplicates');
     const tbodyTunggak = document.getElementById('tbody-tunggak-duplicates');
     const tbodySilang = document.getElementById('tbody-silang-duplicates');
@@ -4976,6 +4977,33 @@ async function loadTagihanDuplicates() {
 
         if (json.status === 'success' && json.data) {
             const data = json.data;
+
+            // 0. Rekening Aktif Duplicates
+            const badgeRekening = document.getElementById('badge-count-rekening-dup');
+            if (badgeRekening) badgeRekening.textContent = `${(data.rekening_duplicates || []).length} Duplikat`;
+            if (tbodyRekening) {
+                if (!data.rekening_duplicates || data.rekening_duplicates.length === 0) {
+                    tbodyRekening.innerHTML = `
+                        <tr>
+                            <td colspan="7" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ditemukan duplikasi di spd_rekening aktif (Bersih).
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbodyRekening.innerHTML = data.rekening_duplicates.map(row => `
+                        <tr>
+                            <td><strong style="color: #38bdf8; font-family: monospace;">${row.NO_PDAM}</strong></td>
+                            <td><strong style="color: #fff;">${row.NAMA || '-'}</strong></td>
+                            <td style="color: var(--text-secondary); font-size: 0.78rem;">${row.ALAMAT || '-'}</td>
+                            <td><span class="badge badge-secondary">${row.periode || '-'}</span></td>
+                            <td style="text-align: center;"><span class="badge badge-danger">${row.jml_kembar} Baris</span></td>
+                            <td style="text-align: right; font-family: monospace; color: #f87171; font-weight: 600;">Rp ${parseInt(row.tot_tagihan || 0).toLocaleString('id-ID')}</td>
+                            <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.ids || '-'}</td>
+                        </tr>
+                    `).join('');
+                }
+            }
 
             // 1. Tagrek Duplicates
             const badgeTagrek = document.getElementById('badge-count-tagrek-dup');

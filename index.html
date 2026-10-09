@@ -1453,11 +1453,46 @@
                     <!-- Sub-Panel 2: Duplikat Tagihan & Tunggakan -->
                     <div class="audit-subpanel mt-4" id="audit-subpanel-tagihan" style="display: none;">
                         <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                            <!-- 2.0 Duplikat spd_rekening -->
+                            <div class="glass-panel">
+                                <div class="panel-header">
+                                    <div>
+                                        <h2 style="color: #38bdf8;"><i class="ph ph-receipt"></i> 2.0 Duplikasi di Tabel Rekening Aktif (spd_rekening)</h2>
+                                        <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Pelanggan yang memiliki nomor sambungan ganda pada rekening air periode aktif berjalan (akan ditransfer ke PPOB).
+                                        </p>
+                                    </div>
+                                    <span class="badge badge-secondary" id="badge-count-rekening-dup">0 Duplikat</span>
+                                </div>
+                                <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>NO PDAM</th>
+                                                <th>NAMA</th>
+                                                <th>ALAMAT</th>
+                                                <th>PERIODE</th>
+                                                <th style="text-align: center;">JML REKENING</th>
+                                                <th style="text-align: right;">TOTAL TAGIHAN</th>
+                                                <th>ID RECORD</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tbody-rekening-duplicates">
+                                            <tr>
+                                                <td colspan="7" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                                    <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ditemukan duplikasi di spd_rekening aktif (Bersih).
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
                             <!-- 2.1 Duplikat spd_tagrek -->
                             <div class="glass-panel">
                                 <div class="panel-header">
                                     <div>
-                                        <h2 style="color: #c084fc;"><i class="ph ph-files"></i> 2.1 Duplikasi di Tabel Rekening Berjalan (spd_tagrek)</h2>
+                                        <h2 style="color: #c084fc;"><i class="ph ph-files"></i> 2.1 Duplikasi di Tabel Tagihan Berjalan (spd_tagrek)</h2>
                                         <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
                                             Pelanggan yang memiliki lebih dari satu baris tagihan pada periode tagihan aktif berjalan.
                                         </p>
@@ -2513,7 +2548,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=20261009_0955"></script>
+    <script src="app.js?v=20261009_1015"></script>
 </body>
 </html>
 

@@ -2827,10 +2827,33 @@ if ($action === 'beli' || $action === 'batal') {
         ]);
         $silangDuplicates = $stmtSilang->fetchAll(PDO::FETCH_ASSOC);
 
+        // 0. Rekening Aktif Duplicates (spd_rekening periode aktif)
+        $stmtPer = $pdo->query("SELECT * FROM spd_periode WHERE IS_TUTUP = 0 LIMIT 1");
+        $perRow = $stmtPer->fetch();
+        $periodeRekeningAktif = $perRow ? sprintf("%04d%02d", $perRow['TAHUN'], $perRow['BULAN']) : date('Ym');
+
+        $stmtRek = $pdo->prepare("
+            SELECT a.NO_PDAM, b.NAMA, b.ALAMAT, a.PERIODE as periode, a.LOKBAY_ID, a.STGOL_ID,
+                   COUNT(*) as jml_kembar, SUM(a.RK + a.MATERAI + a.NON_AIR - a.SUBSIDI) as tot_tagihan,
+                   GROUP_CONCAT(a.ID SEPARATOR ', ') as ids
+            FROM spd_rekening a
+            JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+            JOIN spd_lokbay e ON e.ID = a.LOKBAY_ID
+            WHERE a.PERIODE = :periode AND a.`STATUS` NOT IN ('L') AND e.PPOB = 3 AND a.FLAG = 0
+            GROUP BY a.NO_PDAM
+            HAVING COUNT(*) > 1
+            ORDER BY a.NO_PDAM ASC
+            LIMIT 100
+        ");
+        $stmtRek->execute(['periode' => $periodeRekeningAktif]);
+        $rekeningDuplicates = $stmtRek->fetchAll(PDO::FETCH_ASSOC);
+
         echo json_encode([
             "status" => "success",
             "periode_tagrek" => $reqPeriode,
+            "periode_rekening" => $periodeRekeningAktif,
             "data" => [
+                "rekening_duplicates" => $rekeningDuplicates,
                 "tagrek_duplicates" => $tagrekDuplicates,
                 "tunggak_duplicates" => $tunggakDuplicates,
                 "silang_duplicates" => $silangDuplicates
