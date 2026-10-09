@@ -839,7 +839,7 @@ function executeClosingRekeningPipeline($params = []) {
                 SELECT NULL, a.ID, a.NO_PDAM, a.LOKBAY_ID, a.STGOL_ID, f.next_periode
                     , 0 as meter, 0 as editmeter, IFNULL(IF(b.EDITMETER <> 0, b.EDITMETER, b.METER),0) AS meterlalu,
                     ROUND(IFNULL(( b.VOLUME_REAL + c.VOLUME_REAL + d.VOLUME_REAL ) / CASE WHEN b.STATUS_PELANGGAN = 'PB' OR b.STATUS_PELANGGAN = 'PK' THEN 1 WHEN c.STATUS_PELANGGAN = 'PB' OR c.STATUS_PELANGGAN = 'PK' THEN 2 ELSE 3 END, 0),0) AS rata2, 0 AS
-                    cetak,0 AS non_air,0 AS SUBSIDI,0 AS rk,0 AS vol_real, 0 AS vol_tagihan,e.ADMINISTRASI,e.PEMELIHARAAN,0 AS mat,0 AS air,b.FLAG, NULL AS NOSERIAL, b.STATUS, NULL AS STATUS_PELANGGAN, b.IS_YKK, b.IS_TUNGGAK, 0 AS istutup, NULL AS keterangan, NULL AS longi, NULL AS lati,
+                    cetak,0 AS non_air,0 AS SUBSIDI,0 AS rk,0 AS vol_real, 0 AS vol_tagihan,e.ADMINISTRASI,e.PEMELIHARAAN,0 AS mat,0 AS air,IFNULL(b.FLAG, 0) AS FLAG, NULL AS NOSERIAL, IFNULL(b.STATUS, 'A') AS STATUS, NULL AS STATUS_PELANGGAN, IFNULL(b.IS_YKK, 0) AS IS_YKK, IFNULL(b.IS_TUNGGAK, 0) AS IS_TUNGGAK, 0 AS istutup, NULL AS keterangan, NULL AS longi, NULL AS lati,
                     :user_c as user_c, :user_u as user_u, NOW() as time_c, NOW() as time_u, 0 as is_edit, 0 as tbaca, 0 as xbaca, 0 as is_ctrl, IF(IFNULL(g.VOLUME_ANGSUR, 0) > 0, 1, 0) as is_angsur, a.NO_PDAM AS image, IF(g.cnt_angsur IS NOT NULL, 1, 0) AS is_blmlunas
                     , NULL AS stgol_lama, NULL as TGL_BACA, b.TGL_BACA as XTGL_BACA, g.VOLUME_ANGSUR as ANGSUR_AIR, NULL as TAGREK_TANGGAL
                 FROM spd_stlgn a CROSS
