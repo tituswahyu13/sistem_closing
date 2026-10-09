@@ -1465,6 +1465,40 @@ if ($action === 'beli' || $action === 'batal') {
         http_response_code(500);
         echo json_encode(["status" => "error", "message" => $e->getMessage()]);
     }
+} elseif ($action === 'run_single_rekening_step') {
+    try {
+        require_once __DIR__ . '/pipeline_runner.php';
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $step = isset($input['step']) ? intval($input['step']) : 0;
+        $periode = !empty($input['periode']) ? strval($input['periode']) : null;
+        $userId = intval($input['user_id'] ?? 1);
+        $executedBy = 'Uji Coba Single Step (Tahap ' . $step . ')';
+
+        $result = executeClosingRekeningPipeline([
+            'executed_by' => $executedBy,
+            'user_id' => $userId,
+            'only_step' => $step,
+            'periode' => $periode
+        ]);
+
+        if ($result['success']) {
+            echo json_encode([
+                "status" => "success",
+                "message" => "Uji coba Tahap $step Closing Rekening berhasil dieksekusi!",
+                "data" => $result
+            ]);
+        } else {
+            http_response_code(500);
+            echo json_encode([
+                "status" => "error",
+                "message" => "Uji coba Tahap $step gagal: " . ($result['error'] ?? 'Unknown error'),
+                "data" => $result
+            ]);
+        }
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
 } elseif ($action === 'get_rekening_pipeline_logs') {
     try {
         require_once __DIR__ . '/pipeline_runner.php';

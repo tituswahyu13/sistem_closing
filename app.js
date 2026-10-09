@@ -3549,6 +3549,108 @@ async function runClosingRekeningPipeline() {
 if (btnRunRekeningPipeline) {
     btnRunRekeningPipeline.addEventListener('click', runClosingRekeningPipeline);
 }
+
+async function runSingleRekeningStep(stepNumber) {
+    const stepNames = [
+        'Tahap 0: Mode Maintenance (OFFLINE = 0)',
+        'Tahap 1: Backup Database SIMPADU',
+        'Tahap 2: Transaksi Closing Rekening',
+        'Tahap 3: Transaksi Transfer PPOB & Hankam',
+        'Tahap 4: Pelunasan Rumah Ibadah (FLAG = 9)',
+        'Tahap 5: Mode Online Kembali (OFFLINE = 1)'
+    ];
+    const sName = stepNames[stepNumber] || `Tahap ${stepNumber}`;
+
+    if (!confirm(`Apakah Anda yakin ingin menguji HANYA ${sName}?`)) {
+        return;
+    }
+
+    const btn = document.querySelector(`.btn-test-rekening-step[data-step="${stepNumber}"]`);
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ph ph-spinner spinner"></i> Memproses...';
+    }
+
+    startRekeningStopwatch();
+    updateRekeningProgressUI(stepNumber, 'RUNNING', `Uji Coba: Menjalankan ${sName}...`, false);
+    updateRekeningStepCardUI(stepNumber, 'RUNNING', 'Sedang dieksekusi...');
+
+    if (pipelineRekeningLiveIndicator) {
+        pipelineRekeningLiveIndicator.textContent = `TESTING STEP ${stepNumber}`;
+        pipelineRekeningLiveIndicator.className = 'badge badge-warning';
+    }
+    if (pipelineRekeningConsoleOutput) {
+        pipelineRekeningConsoleOutput.textContent = `>>> [UJI COBA SINGLE-STEP] Menjalankan ${sName}...\n`;
+    }
+
+    // Poller
+    let poller = setInterval(async () => {
+        await loadRekeningPipelineLogs();
+    }, 1500);
+
+    try {
+        const res = await fetch('api.php?action=run_single_rekening_step', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                step: stepNumber,
+                periode: cfgRekeningPeriode ? cfgRekeningPeriode.value : '',
+                user_id: 1
+            })
+        });
+
+        clearInterval(poller);
+        let json = null;
+        try {
+            json = await res.json();
+        } catch (e) {
+            const raw = await res.text().catch(() => '');
+            throw new Error(`HTTP ${res.status}: ${raw.slice(0, 300) || 'Gagal parse JSON'}`);
+        }
+
+        if (json.data && json.data.logs && pipelineRekeningConsoleOutput) {
+            pipelineRekeningConsoleOutput.textContent = json.data.logs.join('\n');
+            pipelineRekeningConsoleOutput.scrollTop = pipelineRekeningConsoleOutput.scrollHeight;
+        }
+
+        if (json.status === 'success' && json.data && json.data.success) {
+            const data = json.data;
+            stopRekeningStopwatch(`${data.durasi_total_detik}s`);
+            updateRekeningProgressUI(stepNumber, 'SUCCESS', `Uji Coba ${sName} Sukses! (${data.durasi_total_detik} detik)`, false);
+            if (data.steps && data.steps[stepNumber]) {
+                updateRekeningStepCardUI(stepNumber, 'SUCCESS', data.steps[stepNumber].pesan || 'Selesai Sukses');
+            }
+            showNotification('Sukses', `Uji Coba ${sName} Berhasil!\n\nDurasi: ${data.durasi_total_detik}s`, 'success');
+            await loadRekeningPipelineLogs();
+        } else {
+            stopRekeningStopwatch('Gagal');
+            const errMsg = (json.data && json.data.error) || json.message || 'Gagal mengeksekusi tahap.';
+            updateRekeningProgressUI(stepNumber, 'FAILED', `Uji Coba ${sName} Gagal: ${errMsg}`, false);
+            updateRekeningStepCardUI(stepNumber, 'FAILED', errMsg);
+            showNotification('Gagal', `Uji Coba ${sName} Gagal: ${errMsg}`, 'danger');
+            await loadRekeningPipelineLogs();
+        }
+    } catch (err) {
+        clearInterval(poller);
+        stopRekeningStopwatch('Error');
+        updateRekeningProgressUI(stepNumber, 'FAILED', 'Gagal: ' + err.message, false);
+        updateRekeningStepCardUI(stepNumber, 'FAILED', err.message);
+        showNotification('Error', 'Kesalahan: ' + err.message, 'danger');
+    } finally {
+        clearInterval(poller);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="ph ph-play"></i> Uji Tahap ${stepNumber} Saja`;
+        }
+    }
+}
+
+document.querySelectorAll('.btn-test-rekening-step').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        const step = parseInt(e.currentTarget.getAttribute('data-step'), 10);
+        runSingleRekeningStep(step);
+    });
+});
 if (btnRefreshRekeningLogs) {
     btnRefreshRekeningLogs.addEventListener('click', loadRekeningPipelineLogs);
 }

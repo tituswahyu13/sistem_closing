@@ -702,6 +702,8 @@ function executeClosingRekeningPipeline($params = []) {
         initPipelineLogTable($pdo);
 
         $resumeStep = intval($params['resume_step'] ?? 0);
+        $onlyStep = (isset($params['only_step']) && $params['only_step'] !== null && $params['only_step'] !== '') ? intval($params['only_step']) : null;
+
         // Deteksi periode aktif dari spd_periode (IS_TUTUP = 0)
         $periodeRekeningAktif = $pdo->query("SELECT * FROM spd_periode WHERE IS_TUTUP = 0 ORDER BY TAHUN DESC, BULAN DESC LIMIT 1")->fetch();
         $periodeAktifDb = $periodeRekeningAktif ? sprintf("%04d%02d", $periodeRekeningAktif['TAHUN'], $periodeRekeningAktif['BULAN']) : date('Ym');
@@ -715,12 +717,16 @@ function executeClosingRekeningPipeline($params = []) {
         }
         $pipelineResult['periode'] = $periodeBerjalan;
 
-        $log("Deteksi Periode Rekening Target: $periodeBerjalan (Aktif DB: $periodeAktifDb | Resume Step: $resumeStep)");
+        if ($onlyStep !== null) {
+            $log("Deteksi Mode SINGLE-STEP: Mengeksekusi HANYA Tahap $onlyStep (Periode: $periodeBerjalan)");
+        } else {
+            $log("Deteksi Periode Rekening Target: $periodeBerjalan (Aktif DB: $periodeAktifDb | Resume Step: $resumeStep)");
+        }
 
         // -------------------------------------------------------------
         // TAHAP 0: SET INFO OFFLINE = '0' (MODE MAINTENANCE)
         // -------------------------------------------------------------
-        if ($resumeStep <= 0) {
+        if ($onlyStep !== null ? $onlyStep === 0 : $resumeStep <= 0) {
             $step0Name = "Tahap 0: Set Status Mode Maintenance (OFFLINE = '0')";
             $log("\n>>> Menjalankan $step0Name...");
             $t0_start = date('Y-m-d H:i:s');
@@ -737,7 +743,7 @@ function executeClosingRekeningPipeline($params = []) {
         // -------------------------------------------------------------
         // TAHAP 1: PENCADANGAN DATABASE (BACKUP CLOSING REKENING)
         // -------------------------------------------------------------
-        if ($resumeStep <= 1) {
+        if ($onlyStep !== null ? $onlyStep === 1 : $resumeStep <= 1) {
             $step1Name = "Tahap 1: Pencadangan Database (Backup DB simpadu)";
             $log("\n>>> Menjalankan $step1Name...");
             $t1_start = date('Y-m-d H:i:s');
@@ -775,7 +781,7 @@ function executeClosingRekeningPipeline($params = []) {
         // -------------------------------------------------------------
         // TAHAP 2: TRANSAKSI CLOSING REKENING (TUTUP REKENING)
         // -------------------------------------------------------------
-        if ($resumeStep <= 2) {
+        if ($onlyStep !== null ? $onlyStep === 2 : $resumeStep <= 2) {
             $step2Name = "Tahap 2: Transaksi Closing Rekening";
             $log("\n>>> Menjalankan $step2Name...");
             $t2_start = date('Y-m-d H:i:s');
@@ -1104,7 +1110,7 @@ function executeClosingRekeningPipeline($params = []) {
         } // End if        // -------------------------------------------------------------
         // TAHAP 3: TRANSAKSI TRANSFER PPOB & HANKAM
         // -------------------------------------------------------------
-        if ($resumeStep <= 3) {
+        if ($onlyStep !== null ? $onlyStep === 3 : $resumeStep <= 3) {
             $step3Name = "Tahap 3: Transaksi Transfer Tagihan ke PPOB";
             $log("\n>>> Menjalankan $step3Name...");
             $t3_start = date('Y-m-d H:i:s');
@@ -1300,7 +1306,7 @@ function executeClosingRekeningPipeline($params = []) {
         // -------------------------------------------------------------
         // TAHAP 4: PELUNASAN RUMAH IBADAH
         // -------------------------------------------------------------
-        if ($resumeStep <= 4) {
+        if ($onlyStep !== null ? $onlyStep === 4 : $resumeStep <= 4) {
             $step4Name = "Tahap 4: Pelunasan Rekening Rumah Ibadah";
             $log("\n>>> Menjalankan $step4Name...");
             $t4_start = date('Y-m-d H:i:s');
@@ -1368,12 +1374,12 @@ function executeClosingRekeningPipeline($params = []) {
                     throw new Exception("Gagal pada $step4Name: " . $e->getMessage());
                 }
             }
-        } // End if resumeStep <= 4
+        } // End if Tahap 4
 
         // -------------------------------------------------------------
         // TAHAP 5: SET INFO OFFLINE = '1' (MODE ONLINE KEMBALI)
         // -------------------------------------------------------------
-        if ($resumeStep <= 5) {
+        if ($onlyStep !== null ? $onlyStep === 5 : $resumeStep <= 5) {
             $step5Name = "Tahap 5: Set Status Mode Online Kembali (OFFLINE = '1')";
             $log("\n>>> Menjalankan $step5Name...");
             $t5_start = date('Y-m-d H:i:s');
