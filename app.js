@@ -2813,11 +2813,11 @@ async function triggerDueRekeningCronCheck() {
     isCheckingRekeningCron = true;
     try {
         const detailEl = document.getElementById('rekening-countdown-detail');
-        const badgeEl = document.getElementById('pipeline-rekening-status-badge');
+        const schedBadgeEl = document.getElementById('rekening-schedule-status-badge');
         if (detailEl) detailEl.textContent = 'Menjalankan eksekusi otomatis closing rekening...';
-        if (badgeEl) {
-            badgeEl.className = 'badge badge-warning';
-            badgeEl.innerHTML = '<i class="ph ph-spinner spinner"></i> SEDANG MEMPROSES...';
+        if (schedBadgeEl) {
+            schedBadgeEl.className = 'badge badge-warning';
+            schedBadgeEl.innerHTML = '<i class="ph ph-spinner spinner"></i> MENJALANKAN JADWAL...';
         }
         if (pipelineRekeningLiveIndicator) {
             pipelineRekeningLiveIndicator.textContent = 'AUTO RUNNING';
@@ -2846,9 +2846,9 @@ async function triggerDueRekeningCronCheck() {
             if (isSuccess) {
                 if (timerEl) timerEl.textContent = 'SELESAI';
                 if (detailEl) detailEl.textContent = json.message || 'Eksekusi closing rekening otomatis sukses dijalankan!';
-                if (badgeEl) {
-                    badgeEl.className = 'badge badge-success';
-                    badgeEl.innerHTML = '<i class="ph ph-check-circle"></i> SUKSES DIEKSEKUSI';
+                if (schedBadgeEl) {
+                    schedBadgeEl.className = 'badge badge-success';
+                    schedBadgeEl.innerHTML = '<i class="ph ph-check-circle"></i> JADWAL SELESAI';
                 }
                 if (pipelineRekeningLiveIndicator) {
                     pipelineRekeningLiveIndicator.textContent = 'COMPLETED';
@@ -2864,9 +2864,9 @@ async function triggerDueRekeningCronCheck() {
                 const errMsg = (json.data && json.data.error) || json.message || 'Eksekusi closing rekening otomatis gagal.';
                 if (timerEl) timerEl.textContent = 'GAGAL';
                 if (detailEl) detailEl.textContent = errMsg;
-                if (badgeEl) {
-                    badgeEl.className = 'badge badge-danger';
-                    badgeEl.innerHTML = '<i class="ph ph-x-circle"></i> GAGAL DIEKSEKUSI';
+                if (schedBadgeEl) {
+                    schedBadgeEl.className = 'badge badge-danger';
+                    schedBadgeEl.innerHTML = '<i class="ph ph-x-circle"></i> JADWAL GAGAL';
                 }
                 if (pipelineRekeningLiveIndicator) {
                     pipelineRekeningLiveIndicator.textContent = 'FAILED';
@@ -2894,11 +2894,11 @@ async function triggerDueRekeningCronCheck() {
         stopRekeningStopwatch('Error');
         console.error('Error auto-trigger closing rekening:', err);
         const detailEl = document.getElementById('rekening-countdown-detail');
-        const badgeEl = document.getElementById('pipeline-rekening-status-badge');
+        const schedBadgeEl = document.getElementById('rekening-schedule-status-badge');
         if (detailEl) detailEl.textContent = 'Gagal memanggil eksekusi jadwal: ' + err.message;
-        if (badgeEl) {
-            badgeEl.className = 'badge badge-danger';
-            badgeEl.innerHTML = '<i class="ph ph-x-circle"></i> KESALAHAN JARINGAN';
+        if (schedBadgeEl) {
+            schedBadgeEl.className = 'badge badge-danger';
+            schedBadgeEl.innerHTML = '<i class="ph ph-x-circle"></i> KESALAHAN JARINGAN';
         }
     } finally {
         isCheckingRekeningCron = false;
@@ -2913,14 +2913,14 @@ function startRekeningCountdownTimer(targetDateStr, status) {
 
     const timerEl = document.getElementById('rekening-countdown-timer');
     const detailEl = document.getElementById('rekening-countdown-detail');
-    const badgeEl = document.getElementById('pipeline-rekening-status-badge');
+    const schedBadgeEl = document.getElementById('rekening-schedule-status-badge');
 
     if (!targetDateStr || status === 'COMPLETED' || status === 'SUCCESS') {
         if (timerEl) timerEl.textContent = 'STANDBY';
         if (detailEl) detailEl.textContent = status === 'SUCCESS' ? 'Eksekusi batch closing rekening terakhir selesai sukses.' : 'Sistem siap untuk eksekusi closing rekening bulanan.';
-        if (badgeEl) {
-            badgeEl.className = 'badge badge-success';
-            badgeEl.innerHTML = '<i class="ph ph-check-circle"></i> Standby (Selesai)';
+        if (schedBadgeEl) {
+            schedBadgeEl.className = 'badge badge-secondary';
+            schedBadgeEl.innerHTML = '<i class="ph ph-clock"></i> Jadwal: Standby';
         }
         return;
     }
@@ -2935,9 +2935,9 @@ function startRekeningCountdownTimer(targetDateStr, status) {
             if (diff < -15 * 60 * 1000) {
                 if (timerEl) timerEl.textContent = 'STANDBY';
                 if (detailEl) detailEl.textContent = `Jadwal ${targetDateStr} telah terlewati. Silakan tentukan jadwal baru.`;
-                if (badgeEl) {
-                    badgeEl.className = 'badge badge-secondary';
-                    badgeEl.textContent = 'KEDALUWARSA / STANDBY';
+                if (schedBadgeEl) {
+                    schedBadgeEl.className = 'badge badge-secondary';
+                    schedBadgeEl.innerHTML = '<i class="ph ph-clock"></i> Kedaluwarsa / Standby';
                 }
                 if (rekeningCountdownInterval) {
                     clearInterval(rekeningCountdownInterval);
@@ -2947,9 +2947,9 @@ function startRekeningCountdownTimer(targetDateStr, status) {
             }
 
             if (timerEl) timerEl.textContent = '00:00:00 (Jatuh Tempo)';
-            if (badgeEl) {
-                badgeEl.className = 'badge badge-warning';
-                badgeEl.innerHTML = '<i class="ph ph-spinner spinner"></i> MENGEKSEKUSI...';
+            if (schedBadgeEl) {
+                schedBadgeEl.className = 'badge badge-warning';
+                schedBadgeEl.innerHTML = '<i class="ph ph-spinner spinner"></i> Menjalankan Jadwal...';
             }
             if (rekeningCountdownInterval) {
                 clearInterval(rekeningCountdownInterval);
@@ -2970,9 +2970,9 @@ function startRekeningCountdownTimer(targetDateStr, status) {
 
         if (timerEl) timerEl.textContent = timerText;
         if (detailEl) detailEl.textContent = `Target: ${targetDateStr}`;
-        if (badgeEl) {
-            badgeEl.className = 'badge badge-info';
-            badgeEl.innerHTML = `<i class="ph ph-clock"></i> PENDING (${days > 0 ? days + ' hari lagi' : (hours > 0 ? hours + ' jam ' : '') + minutes + 'm ' + seconds + 's'})`;
+        if (schedBadgeEl) {
+            schedBadgeEl.className = 'badge badge-info';
+            schedBadgeEl.innerHTML = `<i class="ph ph-clock"></i> PENDING (${days > 0 ? days + ' hari lagi' : (hours > 0 ? hours + ' jam ' : '') + minutes + 'm ' + seconds + 's'})`;
         }
     }
 
