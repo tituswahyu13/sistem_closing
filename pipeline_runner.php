@@ -702,22 +702,20 @@ function executeClosingRekeningPipeline($params = []) {
         initPipelineLogTable($pdo);
 
         $resumeStep = intval($params['resume_step'] ?? 0);
-        $overridePeriode = !empty($params['periode']) ? strval($params['periode']) : null;
+        // Deteksi periode aktif dari spd_periode (IS_TUTUP = 0)
+        $periodeRekeningAktif = $pdo->query("SELECT * FROM spd_periode WHERE IS_TUTUP = 0 ORDER BY TAHUN DESC, BULAN DESC LIMIT 1")->fetch();
+        $periodeAktifDb = $periodeRekeningAktif ? sprintf("%04d%02d", $periodeRekeningAktif['TAHUN'], $periodeRekeningAktif['BULAN']) : date('Ym');
 
-        // Deteksi periode aktif dari spd_periode
-        if ($overridePeriode) {
+        $overridePeriode = !empty($params['periode']) ? strval($params['periode']) : null;
+        if (!empty($overridePeriode) && $overridePeriode === $periodeAktifDb) {
             $periodeBerjalan = $overridePeriode;
         } else {
-            $periodeRekeningAktif = $pdo->query("SELECT * FROM spd_periode WHERE IS_TUTUP = 0 LIMIT 1")->fetch();
-            if (!$periodeRekeningAktif) {
-                $periodeBerjalan = date('Ym');
-            } else {
-                $periodeBerjalan = sprintf("%04d%02d", $periodeRekeningAktif['TAHUN'], $periodeRekeningAktif['BULAN']);
-            }
+            // Gunakan periode yang benar-benar aktif di spd_periode
+            $periodeBerjalan = $periodeAktifDb;
         }
         $pipelineResult['periode'] = $periodeBerjalan;
 
-        $log("Deteksi Periode Rekening Target: $periodeBerjalan (Resume Step: $resumeStep)");
+        $log("Deteksi Periode Rekening Target: $periodeBerjalan (Aktif DB: $periodeAktifDb | Resume Step: $resumeStep)");
 
         // -------------------------------------------------------------
         // TAHAP 0: SET INFO OFFLINE = '0' (MODE MAINTENANCE)

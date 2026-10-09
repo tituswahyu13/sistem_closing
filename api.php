@@ -1616,6 +1616,7 @@ if ($action === 'beli' || $action === 'batal') {
             "status" => "success",
             "data" => $configs,
             "periode_aktif_db" => $periodeAktif,
+            "target_periode_eksekusi" => $periodeAktif,
             "server_time" => date('Y-m-d H:i:s')
         ]);
     } catch (Exception $e) {

@@ -2985,13 +2985,13 @@ async function loadRekeningConfig() {
         const res = await fetch('api.php?action=get_rekening_config');
         const json = await res.json();
         const displayAuto = document.getElementById('display-auto-rekening-periode');
-        const targetPeriode = json.target_periode_eksekusi || '202609';
+        const targetPeriode = json.periode_aktif_db || json.target_periode_eksekusi || '202608';
 
         if (cfgRekeningPeriode) {
             cfgRekeningPeriode.value = targetPeriode;
         }
         if (displayAuto) {
-            displayAuto.textContent = `${targetPeriode} (Aktif SIMPADU: ${json.periode_aktif_db || '-'})`;
+            displayAuto.textContent = `${targetPeriode} (Aktif SIMPADU)`;
         }
 
         if (json.status === 'success' && json.data && json.data.length > 0) {
