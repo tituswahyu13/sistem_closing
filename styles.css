@@ -699,6 +699,111 @@ h2 { font-size: 1.25rem; }
     margin-left: 2px;
 }
 
+/* Topbar PPOB Online/Offline Mode Switcher */
+.topbar-ppob-switcher {
+    display: inline-flex;
+    align-items: center;
+}
+
+.ppob-mode-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #f1f5f9;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    user-select: none;
+}
+
+.ppob-mode-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.ppob-mode-btn.mode-online {
+    border-color: rgba(16, 185, 129, 0.35);
+    background: rgba(6, 78, 59, 0.25);
+}
+
+.ppob-mode-btn.mode-online:hover {
+    border-color: rgba(16, 185, 129, 0.6);
+    box-shadow: 0 0 14px rgba(16, 185, 129, 0.25);
+}
+
+.ppob-mode-btn.mode-offline {
+    border-color: rgba(239, 68, 68, 0.35);
+    background: rgba(127, 29, 29, 0.25);
+}
+
+.ppob-mode-btn.mode-offline:hover {
+    border-color: rgba(239, 68, 68, 0.6);
+    box-shadow: 0 0 14px rgba(239, 68, 68, 0.25);
+}
+
+.ppob-mode-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.ppob-mode-dot.dot-online {
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: pulse-dot-green 2s infinite ease-in-out;
+}
+
+.ppob-mode-dot.dot-offline {
+    background: #ef4444;
+    box-shadow: 0 0 8px #ef4444;
+    animation: pulse-dot-red 2s infinite ease-in-out;
+}
+
+.ppob-mode-label {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    font-size: 0.72rem;
+    color: #cbd5e1;
+}
+
+.ppob-mode-pill {
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.ppob-mode-pill.pill-online {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.ppob-mode-pill.pill-offline {
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+@keyframes pulse-dot-green {
+    0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 8px #10b981; }
+    50% { transform: scale(1.2); opacity: 0.7; box-shadow: 0 0 14px #10b981; }
+}
+
+@keyframes pulse-dot-red {
+    0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 8px #ef4444; }
+    50% { transform: scale(1.2); opacity: 0.7; box-shadow: 0 0 14px #ef4444; }
+}
+
 /* ==========================================================================
    Server Diagnostics Modal Styles
    ========================================================================== */

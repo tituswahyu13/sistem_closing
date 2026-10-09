@@ -2914,7 +2914,50 @@ if ($action === 'beli' || $action === 'batal') {
         http_response_code(500);
         echo json_encode(["status" => "error", "message" => $e->getMessage()]);
     }
+} elseif ($action === 'get_ppob_online_status') {
+    try {
+        $stmt = $pdo->query("SELECT OFFLINE FROM `pdam`.`info` LIMIT 1");
+        $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
+        $offlineVal = $row ? strval($row['OFFLINE']) : '1';
+        $isOnline = ($offlineVal === '1');
+
+        echo json_encode([
+            "status" => "success",
+            "offline" => $offlineVal,
+            "is_online" => $isOnline,
+            "mode" => $isOnline ? "ONLINE" : "OFFLINE",
+            "label" => $isOnline ? "Mode Online (PPOB Aktif)" : "Mode Maintenance (PPOB Offline)",
+            "server_time" => date('Y-m-d H:i:s')
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
+} elseif ($action === 'set_ppob_online_status') {
+    try {
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $targetMode = isset($input['mode']) ? strval($input['mode']) : (isset($input['offline']) ? strval($input['offline']) : '1');
+        if ($targetMode !== '0' && $targetMode !== '1') {
+            throw new Exception("Nilai mode tidak valid. Harus '1' (Online) atau '0' (Offline).");
+        }
+
+        $pdo->prepare("UPDATE `pdam`.`info` SET `OFFLINE` = :mode")->execute(['mode' => $targetMode]);
+        $isOnline = ($targetMode === '1');
+
+        logUserAudit($pdo, $_SESSION['username'] ?? 'admin', 'SET_PPOB_MODE', "Set PPOB status to " . ($isOnline ? "ONLINE (1)" : "OFFLINE (0)"));
+
+        echo json_encode([
+            "status" => "success",
+            "message" => "Status PPOB berhasil diubah menjadi " . ($isOnline ? "ONLINE (Aktif Transaksi)" : "OFFLINE (Maintenance / Tutup)"),
+            "offline" => $targetMode,
+            "is_online" => $isOnline,
+            "mode" => $isOnline ? "ONLINE" : "OFFLINE"
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
 } else {
-    echo json_encode(["message" => "Welcome to API. Use ?action=beli, ?action=batal, ?action=dibeli, ?action=get_config, ?action=get_logs, ?action=get_backups, ?action=run_backup, ?action=run_restore, ?action=run_pipeline, ?action=get_pipeline_logs, ?action=get_audit_summary, ?action=get_uncontrolled_rekening, ?action=get_tagihan_duplicates, ?action=get_angsuran_duplicates, ?action=get_anomali_angsuran_admin, ?action=get_server_metrics, or ?action=switch_db_server"]);
+    echo json_encode(["message" => "Welcome to API. Use ?action=beli, ?action=batal, ?action=dibeli, ?action=get_config, ?action=get_logs, ?action=get_backups, ?action=run_backup, ?action=run_restore, ?action=run_pipeline, ?action=get_pipeline_logs, ?action=get_audit_summary, ?action=get_uncontrolled_rekening, ?action=get_tagihan_duplicates, ?action=get_angsuran_duplicates, ?action=get_anomali_angsuran_admin, ?action=get_server_metrics, ?action=get_ppob_online_status, ?action=set_ppob_online_status, or ?action=switch_db_server"]);
 }
 

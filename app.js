@@ -4530,10 +4530,104 @@ document.getElementById('btn-diag-action-simpadu')?.addEventListener('click', ()
     executeServerSwitch('simpadu');
 });
 
-// Inisialisasi Server Metrics Poller
+// ====================================================================
+// PPOB ONLINE / OFFLINE MODE TOGGLE
+// ====================================================================
+let currentPpobOfflineMode = '1';
+let isSwitchingPpobMode = false;
+
+async function loadPpobOnlineStatus() {
+    try {
+        const res = await fetch('api.php?action=get_ppob_online_status');
+        const json = await res.json();
+        if (json.status === 'success') {
+            currentPpobOfflineMode = String(json.offline);
+            const isOnline = json.is_online;
+            
+            const btn = document.getElementById('btn-toggle-ppob-mode');
+            const dot = document.getElementById('ppob-mode-dot');
+            const pill = document.getElementById('ppob-mode-pill');
+            const label = document.getElementById('ppob-mode-label');
+
+            if (btn && dot && pill && label) {
+                if (isOnline) {
+                    btn.className = 'ppob-mode-btn mode-online';
+                    dot.className = 'ppob-mode-dot dot-online';
+                    pill.className = 'ppob-mode-pill pill-online';
+                    pill.textContent = 'ONLINE';
+                    btn.title = 'Status: PPOB ONLINE (Aktif Transaksi). Klik untuk beralih ke Mode Maintenance (Offline).';
+                } else {
+                    btn.className = 'ppob-mode-btn mode-offline';
+                    dot.className = 'ppob-mode-dot dot-offline';
+                    pill.className = 'ppob-mode-pill pill-offline';
+                    pill.textContent = 'OFFLINE';
+                    btn.title = 'Status: PPOB OFFLINE (Mode Maintenance / Tutup Rekening). Klik untuk mengaktifkan kembali Online.';
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Gagal memuat status online PPOB:', e);
+    }
+}
+
+async function togglePpobOnlineStatus() {
+    if (isSwitchingPpobMode) return;
+    
+    const isCurrentlyOnline = (currentPpobOfflineMode === '1');
+    const targetMode = isCurrentlyOnline ? '0' : '1';
+    const targetModeName = isCurrentlyOnline ? 'OFFLINE (Mode Maintenance / Tutup Rekening)' : 'ONLINE (Aktif Transaksi)';
+
+    const confirmMsg = isCurrentlyOnline 
+        ? 'PERHATIAN: Apakah Anda yakin ingin mengubah status PPOB menjadi OFFLINE?\n\nSelama mode offline (OFFLINE = 0), seluruh loket dan mitra PPOB tidak dapat memproses transaksi pembayaran tagihan.'
+        : 'Konfirmasi: Aktifkan kembali PPOB ke MODE ONLINE?\n\nSeluruh loket dan mitra PPOB akan kembali dibuka dan dapat memproses transaksi pembayaran tagihan.';
+
+    if (!confirm(confirmMsg)) return;
+
+    isSwitchingPpobMode = true;
+    const btn = document.getElementById('btn-toggle-ppob-mode');
+    const pill = document.getElementById('ppob-mode-pill');
+    if (pill) pill.innerHTML = '<i class="ph ph-spinner spinner"></i>';
+
+    try {
+        const res = await fetch('api.php?action=set_ppob_online_status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: targetMode })
+        });
+        const json = await res.json();
+        
+        if (json.status === 'success') {
+            showNotification(
+                'Status PPOB Diperbarui', 
+                `Status PPOB berhasil dialihkan ke ${targetMode === '1' ? 'ONLINE (1)' : 'OFFLINE (0)'}`,
+                targetMode === '1' ? 'success' : 'warning'
+            );
+            await loadPpobOnlineStatus();
+        } else {
+            showNotification('Gagal', json.message || 'Gagal mengubah status PPOB', 'danger');
+            await loadPpobOnlineStatus();
+        }
+    } catch (err) {
+        showNotification('Error', 'Kesalahan jaringan: ' + err.message, 'danger');
+        await loadPpobOnlineStatus();
+    } finally {
+        isSwitchingPpobMode = false;
+    }
+}
+
+document.getElementById('btn-toggle-ppob-mode')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    togglePpobOnlineStatus();
+});
+
+// Inisialisasi Server Metrics Poller & PPOB Status
 loadServerMetrics();
+loadPpobOnlineStatus();
 if (!serverMetricsPoller) {
-    serverMetricsPoller = setInterval(loadServerMetrics, 15000);
+    serverMetricsPoller = setInterval(() => {
+        loadServerMetrics();
+        loadPpobOnlineStatus();
+    }, 15000);
 }
 
 // ====================================================================

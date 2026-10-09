@@ -174,6 +174,15 @@
                         <span class="server-ping-badge" id="topbar-db-ping" title="Latency Koneksi Database">...</span>
                     </div>
 
+                    <!-- PPOB Online/Offline Mode Switch in Topbar -->
+                    <div class="topbar-ppob-switcher" id="topbar-ppob-switcher" title="Status Mode Transaksi PPOB. Klik untuk beralih Online / Offline">
+                        <button type="button" class="ppob-mode-btn mode-online" id="btn-toggle-ppob-mode" title="Klik untuk beralih status transaksi PPOB (Online / Maintenance Offline)">
+                            <span class="ppob-mode-dot dot-online" id="ppob-mode-dot"></span>
+                            <span class="ppob-mode-label" id="ppob-mode-label">PPOB</span>
+                            <span class="ppob-mode-pill pill-online" id="ppob-mode-pill">ONLINE</span>
+                        </button>
+                    </div>
+
                     <!-- Session Status Pill in Topbar -->
                     <span class="badge badge-secondary" id="topbar-session-pill" style="font-size: 0.75rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.65rem;" title="Sesi login aktif. Klik untuk memperbarui sesi">
                         <i class="ph ph-shield-check" style="color: #10b981;"></i> <span id="topbar-session-text">Sesi: 60m</span>
