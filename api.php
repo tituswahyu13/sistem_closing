@@ -2600,6 +2600,27 @@ if ($action === 'beli' || $action === 'batal') {
         ]);
         $cntSilangDup = (int)$stmtSilangDup->fetchColumn();
 
+        // 4b. Silang Rekening Aktif (spd_rekening) vs Tunggakan (spd_tunggak) berdasarkan BLNTAG PPOB
+        $nextPeriodeRek = date('Ym', strtotime(substr($periodeRekening, 0, 4) . '-' . substr($periodeRekening, 4, 2) . '-01 +1 month'));
+        $stmtSilangRekTung = $pdo->prepare("
+            SELECT COUNT(*) FROM (
+                SELECT a.NO_PDAM
+                FROM spd_rekening a
+                JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+                JOIN spd_lokbay e ON e.ID = a.LOKBAY_ID
+                JOIN spd_tunggak t ON t.NO_PDAM = a.NO_PDAM 
+                    AND DATE_FORMAT(DATE_SUB(t.REKENING_BULAN, INTERVAL -1 MONTH), '%Y%m') = :blntag_rek
+                    AND t.LUNAS = 0 AND t.IS_DELETE = 0 AND t.PH IS NULL
+                WHERE a.PERIODE = :periode_rek AND a.`STATUS` NOT IN ('L') AND e.PPOB = 3 AND a.FLAG = 0
+                GROUP BY a.NO_PDAM
+            ) x
+        ");
+        $stmtSilangRekTung->execute([
+            'periode_rek' => $periodeRekening,
+            'blntag_rek' => $nextPeriodeRek
+        ]);
+        $cntSilangRekTung = (int)$stmtSilangRekTung->fetchColumn();
+
         // 5. Angsuran Duplikat
         $stmtAngsurDup = $pdo->query("
             SELECT COUNT(*) FROM (
@@ -2637,8 +2658,8 @@ if ($action === 'beli' || $action === 'batal') {
         $cntAnomaliAdmin = (int)$stmtAnomaliAdmin->fetchColumn();
 
         // Kesimpulan status
-        $readyClosingTagihan = ($cntTagrekDup === 0 && $cntTunggakDup === 0);
-        $readyClosingRekening = ($cntUncontrolled === 0 && $cntAngsurDup === 0 && $cntAnomaliAdmin === 0 && $cntRekDup === 0);
+        $readyClosingTagihan = ($cntTagrekDup === 0 && $cntTunggakDup === 0 && $cntSilangDup === 0);
+        $readyClosingRekening = ($cntUncontrolled === 0 && $cntAngsurDup === 0 && $cntAnomaliAdmin === 0 && $cntRekDup === 0 && $cntSilangRekTung === 0);
 
         echo json_encode([
             "status" => "success",
@@ -2650,7 +2671,8 @@ if ($action === 'beli' || $action === 'batal') {
                 "rekening_duplikat" => $cntRekDup,
                 "tagrek_duplikat" => $cntTagrekDup,
                 "tunggak_duplikat" => $cntTunggakDup,
-                "silang_duplikat" => $cntSilangDup,
+                "silang_tagrek_tunggak" => $cntSilangDup,
+                "silang_rekening_tunggak" => $cntSilangRekTung,
                 "angsuran_duplikat" => $cntAngsurDup,
                 "anomali_angsuran_admin" => $cntAnomaliAdmin
             ],
@@ -2848,6 +2870,29 @@ if ($action === 'beli' || $action === 'batal') {
         $stmtRek->execute(['periode' => $periodeRekeningAktif]);
         $rekeningDuplicates = $stmtRek->fetchAll(PDO::FETCH_ASSOC);
 
+        // 4. Silang Rekening Aktif (spd_rekening) vs Tunggakan (spd_tunggak)
+        $nextPeriodeRek = date('Ym', strtotime(substr($periodeRekeningAktif, 0, 4) . '-' . substr($periodeRekeningAktif, 4, 2) . '-01 +1 month'));
+        $stmtSilangRek = $pdo->prepare("
+            SELECT a.NO_PDAM, b.NAMA, b.ALAMAT, a.PERIODE as periode_rekening, :blntag_rek as blntag_ppob,
+                   (a.RK + a.MATERAI + a.NON_AIR - a.SUBSIDI) as tagihan_rekening, t.JUMLAH as tagihan_tunggak,
+                   a.ID as id_rekening, t.ID as id_tunggak
+            FROM spd_rekening a
+            JOIN spd_stlgn b ON b.ID = a.STLGN_ID
+            JOIN spd_lokbay e ON e.ID = a.LOKBAY_ID
+            JOIN spd_tunggak t ON t.NO_PDAM = a.NO_PDAM 
+                AND DATE_FORMAT(DATE_SUB(t.REKENING_BULAN, INTERVAL -1 MONTH), '%Y%m') = :blntag_rek
+                AND t.LUNAS = 0 AND t.IS_DELETE = 0 AND t.PH IS NULL
+            WHERE a.PERIODE = :periode_rek AND a.`STATUS` NOT IN ('L') AND e.PPOB = 3 AND a.FLAG = 0
+            GROUP BY a.NO_PDAM
+            ORDER BY a.NO_PDAM ASC
+            LIMIT 100
+        ");
+        $stmtSilangRek->execute([
+            'periode_rek' => $periodeRekeningAktif,
+            'blntag_rek' => $nextPeriodeRek
+        ]);
+        $silangRekeningDuplicates = $stmtSilangRek->fetchAll(PDO::FETCH_ASSOC);
+
         echo json_encode([
             "status" => "success",
             "periode_tagrek" => $reqPeriode,
@@ -2856,7 +2901,8 @@ if ($action === 'beli' || $action === 'batal') {
                 "rekening_duplicates" => $rekeningDuplicates,
                 "tagrek_duplicates" => $tagrekDuplicates,
                 "tunggak_duplicates" => $tunggakDuplicates,
-                "silang_duplicates" => $silangDuplicates
+                "silang_duplicates" => $silangDuplicates,
+                "silang_rekening_tunggak_duplicates" => $silangRekeningDuplicates
             ]
         ]);
     } catch (Exception $e) {

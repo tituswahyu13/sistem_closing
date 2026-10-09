@@ -1288,13 +1288,25 @@
 
                     <!-- Grouped KPI Summary Cards -->
                     <div class="audit-kpi-groups mt-4">
-                        <!-- Group 1: Validasi Tutup Tagihan (Tagrek & Tunggak) -->
+                        <!-- Group 1: Validasi Integritas PPOB & Tagihan (Rekening, Tagrek, Tunggak) -->
                         <div class="audit-kpi-group">
                             <div class="audit-group-header">
-                                <span class="badge badge-info"><i class="ph ph-receipt"></i> Cek Tutup Tagihan</span>
-                                <span style="font-size: 0.72rem; color: var(--text-secondary);">Tagrek & Tunggak</span>
+                                <span class="badge badge-info"><i class="ph ph-receipt"></i> Cek Transfer PPOB & Tagihan</span>
+                                <span style="font-size: 0.72rem; color: var(--text-secondary);">Rekening, Tagrek, & Tunggak</span>
                             </div>
-                            <div class="audit-group-cards-2">
+                            <div class="audit-group-cards-3">
+                                <!-- KPI: Duplikat Rekening Aktif -->
+                                <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-rekening">
+                                    <div class="stat-icon-wrapper info" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">
+                                        <i class="ph ph-receipt"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <span class="stat-label">Duplikat Rekening</span>
+                                        <h3 class="stat-value" id="audit-stat-rekening-dup" style="color: #38bdf8;">0</h3>
+                                        <span class="stat-sub" id="audit-sub-rekening">Target: spd_rekening</span>
+                                    </div>
+                                </div>
+
                                 <!-- KPI: Duplikat Tagrek -->
                                 <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-tagrek">
                                     <div class="stat-icon-wrapper purple" style="background: rgba(139, 92, 246, 0.15); color: #c084fc;">
@@ -1586,6 +1598,42 @@
                                             <tr>
                                                 <td colspan="7" style="text-align: center; color: #10b981; padding: 1.5rem;">
                                                     <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ada konflik silang antara spd_tagrek dan spd_tunggak (Bersih).
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- 2.4 Konflik Silang Rekening Aktif vs Tunggak (Target PPOB BLNTAG) -->
+                            <div class="glass-panel">
+                                <div class="panel-header">
+                                    <div>
+                                        <h2 style="color: #f59e0b;"><i class="ph ph-git-merge"></i> 2.4 Konflik Silang: spd_rekening (Aktif) VS spd_tunggak</h2>
+                                        <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Pelanggan aktif berjalan yang nomor sambungannya sudah tercatat di <code>spd_tunggak</code> dengan target <code>BLNTAG</code> PPOB yang sama (mencegah tabrakan PRIMARY KEY di <code>pdam.ppob</code>).
+                                        </p>
+                                    </div>
+                                    <span class="badge badge-secondary" id="badge-count-silang-rek-dup">0 Konflik</span>
+                                </div>
+                                <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>NO PDAM</th>
+                                                <th>NAMA</th>
+                                                <th>PERIODE REKENING</th>
+                                                <th>TARGET BLNTAG PPOB</th>
+                                                <th style="text-align: right;">TAGIHAN REKENING</th>
+                                                <th style="text-align: right;">TAGIHAN TUNGGAK</th>
+                                                <th>ID REKENING</th>
+                                                <th>ID TUNGGAK</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tbody-silang-rekening-duplicates">
+                                            <tr>
+                                                <td colspan="8" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                                    <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ada konflik silang antara spd_rekening aktif dan spd_tunggak (Bersih).
                                                 </td>
                                             </tr>
                                         </tbody>
@@ -2548,7 +2596,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=20261009_1015"></script>
+    <script src="app.js?v=20261009_1045"></script>
 </body>
 </html>
 

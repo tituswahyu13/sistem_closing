@@ -4735,12 +4735,12 @@ function switchAuditSubtab(subtabId) {
     // Toggle active state on top KPI cards
     const cardMap = {
         'uncontrolled': ['card-kpi-uncontrolled'],
-        'tagihan': ['card-kpi-tagrek', 'card-kpi-tunggak'],
+        'tagihan': ['card-kpi-rekening', 'card-kpi-tagrek', 'card-kpi-tunggak'],
         'angsuran': ['card-kpi-angsuran'],
         'anomali_admin': ['card-kpi-anomali-admin']
     };
 
-    ['card-kpi-uncontrolled', 'card-kpi-tagrek', 'card-kpi-tunggak', 'card-kpi-angsuran', 'card-kpi-anomali-admin'].forEach(id => {
+    ['card-kpi-uncontrolled', 'card-kpi-rekening', 'card-kpi-tagrek', 'card-kpi-tunggak', 'card-kpi-angsuran', 'card-kpi-anomali-admin'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.remove('active-audit-card');
     });
@@ -4777,14 +4777,19 @@ async function loadAuditSummary() {
 
             // Update KPI numbers
             const elUncontrolled = document.getElementById('audit-stat-uncontrolled');
+            const elRekening = document.getElementById('audit-stat-rekening-dup');
             const elTagrek = document.getElementById('audit-stat-tagrek-dup');
             const elTunggak = document.getElementById('audit-stat-tunggak-dup');
             const elAngsuran = document.getElementById('audit-stat-angsuran-dup');
             const elAnomaliAdmin = document.getElementById('audit-stat-anomali-admin');
 
             if (elUncontrolled) elUncontrolled.textContent = (metrics.rekening_belum_kontrol || 0).toLocaleString('id-ID');
+            if (elRekening) elRekening.textContent = (metrics.rekening_duplikat || 0).toLocaleString('id-ID');
             if (elTagrek) elTagrek.textContent = (metrics.tagrek_duplikat || 0).toLocaleString('id-ID');
-            if (elTunggak) elTunggak.textContent = ((metrics.tunggak_duplikat || 0) + (metrics.silang_duplikat || 0)).toLocaleString('id-ID');
+            
+            const totalTunggakSilang = (metrics.tunggak_duplikat || 0) + (metrics.silang_tagrek_tunggak || metrics.silang_duplikat || 0) + (metrics.silang_rekening_tunggak || 0);
+            if (elTunggak) elTunggak.textContent = totalTunggakSilang.toLocaleString('id-ID');
+            
             if (elAngsuran) elAngsuran.textContent = (metrics.angsuran_duplikat || 0).toLocaleString('id-ID');
             if (elAnomaliAdmin) elAnomaliAdmin.textContent = (metrics.anomali_angsuran_admin || 0).toLocaleString('id-ID');
 
@@ -4806,7 +4811,7 @@ async function loadAuditSummary() {
                 badgeTabUncontrolled.className = `badge ${metrics.rekening_belum_kontrol > 0 ? 'badge-warning' : 'badge-success'}`;
             }
             if (badgeTabTagihan) {
-                const totTagihanDup = (metrics.rekening_duplikat || 0) + (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.silang_duplikat || 0);
+                const totTagihanDup = (metrics.rekening_duplikat || 0) + (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.silang_tagrek_tunggak || metrics.silang_duplikat || 0) + (metrics.silang_rekening_tunggak || 0);
                 badgeTabTagihan.textContent = totTagihanDup.toLocaleString('id-ID');
                 badgeTabTagihan.className = `badge ${totTagihanDup > 0 ? 'badge-danger' : 'badge-success'}`;
             }
@@ -4826,7 +4831,7 @@ async function loadAuditSummary() {
                     overallBadge.className = 'badge badge-success';
                     overallBadge.innerHTML = '<i class="ph ph-shield-check"></i> Siap Closing (Data Bersih)';
                 } else {
-                    const totalIssues = (metrics.rekening_belum_kontrol || 0) + (metrics.rekening_duplikat || 0) + (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.angsuran_duplikat || 0) + (metrics.anomali_angsuran_admin || 0);
+                    const totalIssues = (metrics.rekening_belum_kontrol || 0) + (metrics.rekening_duplikat || 0) + (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.silang_tagrek_tunggak || metrics.silang_duplikat || 0) + (metrics.silang_rekening_tunggak || 0) + (metrics.angsuran_duplikat || 0) + (metrics.anomali_angsuran_admin || 0);
                     overallBadge.className = 'badge badge-warning';
                     overallBadge.innerHTML = `<i class="ph ph-warning"></i> Perlu Perhatian (${totalIssues} Anomali)`;
                 }
@@ -5080,6 +5085,36 @@ async function loadTagihanDuplicates() {
                             <td style="text-align: right; font-family: monospace; color: #60a5fa;">Rp ${parseInt(row.tagihan_tagrek || 0).toLocaleString('id-ID')}</td>
                             <td style="text-align: right; font-family: monospace; color: #f87171;">Rp ${parseInt(row.tagihan_tunggak || 0).toLocaleString('id-ID')}</td>
                             <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.id_tagrek || '-'}</td>
+                            <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.id_tunggak || '-'}</td>
+                        </tr>
+                    `).join('');
+                }
+            }
+
+            // 4. Silang Rekening Aktif vs Tunggak
+            const tbodySilangRek = document.getElementById('tbody-silang-rekening-duplicates');
+            const badgeSilangRek = document.getElementById('badge-count-silang-rek-dup');
+            const silangRekList = data.silang_rekening_tunggak_duplicates || [];
+            if (badgeSilangRek) badgeSilangRek.textContent = `${silangRekList.length} Konflik`;
+            if (tbodySilangRek) {
+                if (silangRekList.length === 0) {
+                    tbodySilangRek.innerHTML = `
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ada konflik silang antara spd_rekening aktif dan spd_tunggak (Bersih).
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbodySilangRek.innerHTML = silangRekList.map(row => `
+                        <tr>
+                            <td><strong style="color: #f59e0b; font-family: monospace;">${row.NO_PDAM}</strong></td>
+                            <td><strong style="color: #fff;">${row.NAMA || '-'}</strong></td>
+                            <td><span class="badge badge-secondary">${row.periode_rekening || '-'}</span></td>
+                            <td><span class="badge badge-purple">${row.blntag_ppob || '-'}</span></td>
+                            <td style="text-align: right; font-family: monospace; color: #60a5fa;">Rp ${parseInt(row.tagihan_rekening || 0).toLocaleString('id-ID')}</td>
+                            <td style="text-align: right; font-family: monospace; color: #f87171;">Rp ${parseInt(row.tagihan_tunggak || 0).toLocaleString('id-ID')}</td>
+                            <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.id_rekening || '-'}</td>
                             <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.id_tunggak || '-'}</td>
                         </tr>
                     `).join('');
@@ -5382,6 +5417,7 @@ function initAuditListeners() {
 
     // KPI card clicks jump to respective sub-tab
     document.getElementById('card-kpi-uncontrolled')?.addEventListener('click', () => switchAuditSubtab('uncontrolled'));
+    document.getElementById('card-kpi-rekening')?.addEventListener('click', () => switchAuditSubtab('tagihan'));
     document.getElementById('card-kpi-tagrek')?.addEventListener('click', () => switchAuditSubtab('tagihan'));
     document.getElementById('card-kpi-tunggak')?.addEventListener('click', () => switchAuditSubtab('tagihan'));
     document.getElementById('card-kpi-angsuran')?.addEventListener('click', () => switchAuditSubtab('angsuran'));
