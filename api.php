@@ -1143,6 +1143,8 @@ if ($action === 'beli' || $action === 'batal') {
         $hasSafetySnapshot = false;
         $isFinished = false;
         $finishDuration = 0;
+        $hasError = false;
+        $errorDetail = '';
 
         if (file_exists($logFile)) {
             $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
@@ -1170,6 +1172,10 @@ if ($action === 'beli' || $action === 'batal') {
                     if (str_contains($l, 'SUCCESS: Pemulihan database') && preg_match('/dalam\s+([\d\.]+)\s+detik/', $l, $m)) {
                         $isFinished = true;
                         $finishDuration = floatval($m[1]);
+                    }
+                    if (str_contains($l, 'ERROR:')) {
+                        $hasError = true;
+                        if (empty($errorDetail)) $errorDetail = $l;
                     }
                 }
             }
@@ -1251,8 +1257,8 @@ if ($action === 'beli' || $action === 'batal') {
             $isFinished = false;
         } else {
             $isReallyActive = false;
-            // Jika tidak ada proses aktif lagi dan tabel sudah terisi penuh (89 tabel)
-            if ($importedTablesCount >= 85) {
+            // Jika tidak ada proses aktif lagi dan tabel sudah terisi penuh (85 tabel) atau tercatat sukses di log
+            if ($isFinished || $importedTablesCount >= 85) {
                 $isFinished = true;
                 $dynamicPercent = 100;
             }
@@ -1262,6 +1268,8 @@ if ($action === 'beli' || $action === 'batal') {
             "status" => "success",
             "is_active" => $isReallyActive,
             "is_finished" => $isFinished,
+            "is_error" => ($hasError && !$isReallyActive && !$isFinished),
+            "error_detail" => $errorDetail,
             "finish_duration" => $finishDuration,
             "percent" => $dynamicPercent,
             "imported_rows" => $importedRowsCount,

@@ -2019,6 +2019,23 @@ const btnCloseRestoreSuccess = document.getElementById('btn-close-restore-succes
 
 let restoreTimerInterval = null;
 let restoreProgressInterval = null;
+let restoreBeforeUnloadHandler = null;
+let lastKnownRestoreQuery = '';
+
+function cleanRestoreTracking() {
+    if (restoreTimerInterval) {
+        clearInterval(restoreTimerInterval);
+        restoreTimerInterval = null;
+    }
+    if (restoreProgressInterval) {
+        clearInterval(restoreProgressInterval);
+        restoreProgressInterval = null;
+    }
+    if (restoreBeforeUnloadHandler) {
+        window.removeEventListener('beforeunload', restoreBeforeUnloadHandler);
+        restoreBeforeUnloadHandler = null;
+    }
+}
 
 function setRestoreStepUI(stepNum, status, badgeText) {
     const row = document.getElementById(`restore-step-${stepNum}`);
@@ -2050,6 +2067,178 @@ function setRestoreStepUI(stepNum, status, badgeText) {
     }
 }
 
+function startRestoreTracking(targetDb, file, safetyBackup) {
+    cleanRestoreTracking();
+
+    if (formRestoreDatabase) formRestoreDatabase.style.display = 'none';
+    if (restoreProgressContainer) restoreProgressContainer.style.display = 'flex';
+    if (restoreResultContainer) restoreResultContainer.style.display = 'none';
+
+    // Proteksi penutupan tab atau reload halaman tidak sengaja saat proses pemulihan berjalan
+    restoreBeforeUnloadHandler = (e) => {
+        e.preventDefault();
+        e.returnValue = 'Proses pemulihan database sedang berjalan aktif di server. Jangan muat ulang atau menutup halaman.';
+        return e.returnValue;
+    };
+    window.addEventListener('beforeunload', restoreBeforeUnloadHandler);
+
+    let localElapsedSeconds = 0;
+    if (restoreLiveTimer) restoreLiveTimer.innerHTML = '<i class="ph ph-timer"></i> 00:00';
+
+    // Stopwatch lokal (disinkronisasi dengan elapsed_seconds dari server pada tiap polling)
+    restoreTimerInterval = setInterval(() => {
+        localElapsedSeconds++;
+        const m = String(Math.floor(localElapsedSeconds / 60)).padStart(2, '0');
+        const s = String(localElapsedSeconds % 60).padStart(2, '0');
+        if (restoreLiveTimer) {
+            restoreLiveTimer.innerHTML = `<i class="ph ph-timer"></i> ${m}:${s}`;
+        }
+    }, 1000);
+
+    const restoreStatusText = document.getElementById('restore-progress-status-text');
+    if (restoreStatusText) restoreStatusText.textContent = 'Memulai Pemulihan Database...';
+    if (restoreLogTicker) {
+        restoreLogTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}] Terhubung ke server, memantau proses pemulihan '${targetDb}' dari berkas '${file}'...`;
+    }
+
+    lastKnownRestoreQuery = '';
+
+    // Polling aktif status pemulihan setiap 1,5 detik
+    restoreProgressInterval = setInterval(async () => {
+        try {
+            const res = await fetch('api.php?action=get_restore_status');
+            const data = await res.json();
+
+            if (data.status === 'success') {
+                // 1. Sinkronisasi Stopwatch dengan server
+                if (typeof data.elapsed_seconds === 'number' && data.elapsed_seconds > 0) {
+                    localElapsedSeconds = data.elapsed_seconds;
+                    const m = String(Math.floor(localElapsedSeconds / 60)).padStart(2, '0');
+                    const s = String(localElapsedSeconds % 60).padStart(2, '0');
+                    if (restoreLiveTimer) {
+                        restoreLiveTimer.innerHTML = `<i class="ph ph-timer"></i> ${m}:${s}`;
+                    }
+                }
+
+                // 2. Progres Persentase Bar & Text
+                const pct = Math.min(100, Math.max(0, data.percent || 0));
+                if (restoreProgressBar) restoreProgressBar.style.width = `${pct}%`;
+                if (restorePercentText) restorePercentText.textContent = `${pct}%`;
+
+                // 3. Status text info
+                if (restoreStatusText) {
+                    if (data.rows_formatted) {
+                        restoreStatusText.textContent = `Memulihkan Database (${data.rows_formatted})`;
+                    } else if (data.is_finished) {
+                        restoreStatusText.textContent = 'Pemulihan Selesai Sukses!';
+                    } else {
+                        restoreStatusText.textContent = 'Memproses Pemulihan Database...';
+                    }
+                }
+
+                // 4. Update Steps UI
+                // Step 1: Safety Snapshot
+                if (data.has_safety_snapshot) {
+                    setRestoreStepUI(1, 'DONE', 'Snapshot Siap');
+                } else if (safetyBackup) {
+                    setRestoreStepUI(1, 'RUNNING', 'Membuat Snapshot...');
+                } else {
+                    setRestoreStepUI(1, 'DONE', 'Dilewati');
+                }
+
+                // Step 2: Dekompresi Berkas GZIP
+                if (data.imported_tables > 0 || data.imported_rows > 0 || data.active_table || data.percent >= 25) {
+                    setRestoreStepUI(2, 'DONE', 'Dekompresi Selesai');
+                } else if (data.has_safety_snapshot) {
+                    setRestoreStepUI(2, 'RUNNING', 'Mengekstrak GZIP...');
+                } else {
+                    setRestoreStepUI(2, 'WAITING', 'Menunggu');
+                }
+
+                // Step 3: Impor Data & Struktur MySQL
+                if (data.is_finished) {
+                    setRestoreStepUI(3, 'DONE', `Selesai (${data.imported_tables || 89} Tabel)`);
+                } else if (data.active_table || data.imported_tables > 0 || data.imported_rows > 0) {
+                    let stepText = 'Mengimpor Data...';
+                    if (data.active_table) {
+                        stepText = `Tabel: ${data.active_table}`;
+                    }
+                    if (data.imported_tables > 0) {
+                        stepText += ` (${data.imported_tables}/${data.total_tables || 89})`;
+                    }
+                    setRestoreStepUI(3, 'RUNNING', stepText);
+                } else {
+                    setRestoreStepUI(3, 'WAITING', 'Menunggu');
+                }
+
+                // Step 4: Finalisasi & Verifikasi
+                if (data.is_finished) {
+                    setRestoreStepUI(4, 'DONE', 'Terverifikasi');
+                } else if (data.percent >= 95) {
+                    setRestoreStepUI(4, 'RUNNING', 'Memverifikasi...');
+                } else {
+                    setRestoreStepUI(4, 'WAITING', 'Menunggu');
+                }
+
+                // 5. Query Log Ticker
+                if (data.query_snippet && data.query_snippet !== lastKnownRestoreQuery) {
+                    lastKnownRestoreQuery = data.query_snippet;
+                    if (restoreLogTicker) {
+                        const timeStr = data.timestamp || new Date().toLocaleTimeString('id-ID');
+                        restoreLogTicker.textContent += `\n[${timeStr}] ${data.query_snippet}`;
+                        restoreLogTicker.scrollTop = restoreLogTicker.scrollHeight;
+                    }
+                }
+
+                // 6. Jika Proses Telah Selesai (is_finished: true)
+                if (data.is_finished === true) {
+                    cleanRestoreTracking();
+
+                    for (let i = 1; i <= 4; i++) {
+                        setRestoreStepUI(i, 'DONE', 'Selesai');
+                    }
+                    if (restoreProgressBar) restoreProgressBar.style.width = '100%';
+                    if (restorePercentText) restorePercentText.textContent = '100%';
+
+                    const durationSec = Math.round(data.finish_duration || localElapsedSeconds);
+                    const finalTime = `${Math.floor(durationSec / 60)}m ${durationSec % 60}s`;
+
+                    setTimeout(() => {
+                        if (restoreProgressContainer) restoreProgressContainer.style.display = 'none';
+                        if (restoreResultContainer) restoreResultContainer.style.display = 'block';
+
+                        const resTitle = document.getElementById('restore-result-title');
+                        const resMsg = document.getElementById('restore-result-message');
+                        if (resTitle) resTitle.textContent = `Pemulihan Selesai Sukses (${finalTime})`;
+                        if (resMsg) {
+                            resMsg.innerHTML = `Database <strong>'${data.target_db || targetDb}'</strong> berhasil dipulihkan secara penuh dari berkas <code>${data.source_file || file}</code>.<br><small style="color: #94a3b8; display: inline-block; margin-top: 0.5rem;">Total durasi: ${durationSec} detik. Total ${data.imported_tables || 89} tabel berhasil dipulihkan.</small>`;
+                        }
+                        if (typeof showNotification === 'function') {
+                            showNotification('success', `Database '${targetDb}' berhasil dipulihkan (${finalTime})`);
+                        }
+                        if (typeof loadBackupData === 'function') {
+                            loadBackupData();
+                        }
+                    }, 800);
+                    return;
+                }
+
+                // 7. Jika Proses Gagal / Terhenti (is_error: true atau proses mati tanpa selesai)
+                if (data.is_error || (!data.is_active && !data.is_finished && localElapsedSeconds > 5)) {
+                    cleanRestoreTracking();
+                    const errMsg = data.error_detail || data.last_log || 'Proses pemulihan terhenti atau tidak aktif di server.';
+                    alert('PEMULIHAN GAGAL / TERHENTI:\n\n' + errMsg);
+                    if (formRestoreDatabase) formRestoreDatabase.style.display = 'block';
+                    if (restoreProgressContainer) restoreProgressContainer.style.display = 'none';
+                    return;
+                }
+            }
+        } catch (pollErr) {
+            console.warn('Poll restore error:', pollErr);
+        }
+    }, 1500);
+}
+
 function openRestoreModal(filename) {
     if (!modalRestore) return;
     if (restoreFileDisplay) restoreFileDisplay.textContent = filename;
@@ -2058,25 +2247,38 @@ function openRestoreModal(filename) {
     if (restoreSafetyBackup) restoreSafetyBackup.checked = true;
     if (restoreConfirmText) restoreConfirmText.value = '';
 
-    // Tampilkan form awal, sembunyikan progress & result
-    if (formRestoreDatabase) formRestoreDatabase.style.display = 'block';
-    if (restoreProgressContainer) restoreProgressContainer.style.display = 'none';
-    if (restoreResultContainer) restoreResultContainer.style.display = 'none';
-
-    // Reset step states
-    for (let i = 1; i <= 4; i++) {
-        setRestoreStepUI(i, 'WAITING', 'Menunggu');
-    }
-    if (restoreProgressBar) restoreProgressBar.style.width = '0%';
-    if (restorePercentText) restorePercentText.textContent = '0%';
-    if (restoreLiveTimer) restoreLiveTimer.innerHTML = '<i class="ph ph-timer"></i> 00:00';
-
     modalRestore.style.display = 'flex';
+
+    // Cek apakah ada proses restore yang SEDANG berjalan aktif di server
+    fetch('api.php?action=get_restore_status')
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success' && data.is_active) {
+                // Restore sedang aktif berjalan di latar belakang! Langsung tampilkan pemantauan live
+                startRestoreTracking(data.target_db || 'simpadu', data.source_file || filename, data.has_safety_snapshot);
+            } else {
+                // Tidak ada restore aktif, tampilkan form konfirmasi seperti biasa
+                if (formRestoreDatabase) formRestoreDatabase.style.display = 'block';
+                if (restoreProgressContainer) restoreProgressContainer.style.display = 'none';
+                if (restoreResultContainer) restoreResultContainer.style.display = 'none';
+
+                for (let i = 1; i <= 4; i++) {
+                    setRestoreStepUI(i, 'WAITING', 'Menunggu');
+                }
+                if (restoreProgressBar) restoreProgressBar.style.width = '0%';
+                if (restorePercentText) restorePercentText.textContent = '0%';
+                if (restoreLiveTimer) restoreLiveTimer.innerHTML = '<i class="ph ph-timer"></i> 00:00';
+            }
+        })
+        .catch(() => {
+            if (formRestoreDatabase) formRestoreDatabase.style.display = 'block';
+            if (restoreProgressContainer) restoreProgressContainer.style.display = 'none';
+            if (restoreResultContainer) restoreResultContainer.style.display = 'none';
+        });
 }
 
 function closeRestoreModal() {
-    if (restoreTimerInterval) clearInterval(restoreTimerInterval);
-    if (restoreProgressInterval) clearInterval(restoreProgressInterval);
+    cleanRestoreTracking();
     if (modalRestore) modalRestore.style.display = 'none';
 }
 
@@ -2089,7 +2291,9 @@ if (btnCancelRestore) {
 if (btnCloseRestoreSuccess) {
     btnCloseRestoreSuccess.addEventListener('click', () => {
         closeRestoreModal();
-        loadBackupData();
+        if (typeof loadBackupData === 'function') {
+            loadBackupData();
+        }
     });
 }
 
@@ -2131,96 +2335,16 @@ if (formRestoreDatabase) {
             return;
         }
 
-        // Tampilkan layar progress animasi
+        // Tampilkan layar progress animasi dan mulai inisialisasi
         if (formRestoreDatabase) formRestoreDatabase.style.display = 'none';
         if (restoreProgressContainer) restoreProgressContainer.style.display = 'flex';
         if (restoreResultContainer) restoreResultContainer.style.display = 'none';
 
-        // Start Stopwatch
-        let elapsedSeconds = 0;
-        if (restoreLiveTimer) restoreLiveTimer.innerHTML = '<i class="ph ph-timer"></i> 00:00';
-        restoreTimerInterval = setInterval(() => {
-            elapsedSeconds++;
-            const m = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
-            const s = String(elapsedSeconds % 60).padStart(2, '0');
-            if (restoreLiveTimer) {
-                restoreLiveTimer.innerHTML = `<i class="ph ph-timer"></i> ${m}:${s}`;
-            }
-        }, 1000);
-
-        // Simulated Stage Progression for smooth UX
-        let currentProgress = 5;
+        setRestoreStepUI(1, safetyBackup ? 'RUNNING' : 'DONE', safetyBackup ? 'Mempersiapkan...' : 'Dilewati');
         if (restoreProgressBar) restoreProgressBar.style.width = '5%';
         if (restorePercentText) restorePercentText.textContent = '5%';
-        setRestoreStepUI(1, safetyBackup ? 'RUNNING' : 'DONE', safetyBackup ? 'Membuat Snapshot...' : 'Dilewati');
-
-        if (restoreLogTicker) {
-            restoreLogTicker.textContent = `[${new Date().toLocaleTimeString('id-ID')}] Memulai proses restore untuk berkas ${file} ke database ${targetDb}...`;
-        }
-
-        // Timer to step through stages
-        let stepProgressTimer = setTimeout(() => {
-            if (safetyBackup) setRestoreStepUI(1, 'DONE', 'Snapshot Siap');
-            setRestoreStepUI(2, 'RUNNING', 'Mengekstrak GZIP...');
-            currentProgress = 35;
-            if (restoreProgressBar) restoreProgressBar.style.width = '35%';
-            if (restorePercentText) restorePercentText.textContent = '35%';
-            if (restoreLogTicker) {
-                restoreLogTicker.textContent += `\n[${new Date().toLocaleTimeString('id-ID')}] Dekompresi stream berkas GZIP (.sql.gz) sedang berlangsung...`;
-                restoreLogTicker.scrollTop = restoreLogTicker.scrollHeight;
-            }
-
-            stepProgressTimer = setTimeout(() => {
-                setRestoreStepUI(2, 'DONE', 'Dekompresi Selesai');
-                setRestoreStepUI(3, 'RUNNING', 'Mengimpor Data...');
-                currentProgress = 65;
-                if (restoreProgressBar) restoreProgressBar.style.width = '65%';
-                if (restorePercentText) restorePercentText.textContent = '65%';
-                if (restoreLogTicker) {
-                    restoreLogTicker.textContent += `\n[${new Date().toLocaleTimeString('id-ID')}] Mengimpor skema tabel, data record, routines & triggers ke MySQL...`;
-                    restoreLogTicker.scrollTop = restoreLogTicker.scrollHeight;
-                }
-
-                stepProgressTimer = setTimeout(() => {
-                    setRestoreStepUI(3, 'RUNNING', 'Hampir Selesai...');
-                    currentProgress = 88;
-                    if (restoreProgressBar) restoreProgressBar.style.width = '88%';
-                    if (restorePercentText) restorePercentText.textContent = '88%';
-                }, 20000);
-            }, 12000);
-        }, 8000);
-
-        // Real-time live status & active query polling
-        let lastKnownQuery = '';
-        restoreProgressInterval = setInterval(async () => {
-            try {
-                const res = await fetch('api.php?action=get_restore_status');
-                const json = await res.json();
-                if (json.status === 'success') {
-                    if (json.active_table) {
-                        setRestoreStepUI(3, 'RUNNING', `Tabel: ${json.active_table}`);
-                    }
-                    if (json.query_snippet && json.query_snippet !== lastKnownQuery) {
-                        lastKnownQuery = json.query_snippet;
-                        if (restoreLogTicker) {
-                            const timeStr = json.timestamp || new Date().toLocaleTimeString('id-ID');
-                            restoreLogTicker.textContent += `\n[${timeStr}] ${json.query_snippet}`;
-                            restoreLogTicker.scrollTop = restoreLogTicker.scrollHeight;
-                        }
-                    }
-                }
-            } catch (e) {
-                // ignore background poll error
-            }
-        }, 1500);
-
-        // Proteksi reload tidak sengaja saat proses restore berjalan
-        const onBeforeUnloadHandler = (e) => {
-            e.preventDefault();
-            e.returnValue = 'Proses pemulihan database sedang berjalan di server. Jangan muat ulang halaman.';
-            return e.returnValue;
-        };
-        window.addEventListener('beforeunload', onBeforeUnloadHandler);
+        const restoreStatusText = document.getElementById('restore-progress-status-text');
+        if (restoreStatusText) restoreStatusText.textContent = 'Mengirim Permintaan Pemulihan...';
 
         try {
             const res = await fetch('api.php?action=run_restore', {
@@ -2234,42 +2358,17 @@ if (formRestoreDatabase) {
                 })
             });
 
-            window.removeEventListener('beforeunload', onBeforeUnloadHandler);
-            clearTimeout(stepProgressTimer);
-            if (restoreTimerInterval) clearInterval(restoreTimerInterval);
-            if (restoreProgressInterval) clearInterval(restoreProgressInterval);
-
             const json = await res.json();
             if (json.status === 'success') {
-                for (let i = 1; i <= 4; i++) {
-                    setRestoreStepUI(i, 'DONE', 'Selesai');
-                }
-                if (restoreProgressBar) restoreProgressBar.style.width = '100%';
-                if (restorePercentText) restorePercentText.textContent = '100%';
-
-                const finalTime = `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`;
-
-                setTimeout(() => {
-                    if (restoreProgressContainer) restoreProgressContainer.style.display = 'none';
-                    if (restoreResultContainer) restoreResultContainer.style.display = 'block';
-
-                    const resTitle = document.getElementById('restore-result-title');
-                    const resMsg = document.getElementById('restore-result-message');
-                    if (resTitle) resTitle.textContent = `Pemulihan Selesai Sukses (${finalTime})`;
-                    if (resMsg) {
-                        resMsg.innerHTML = `Database <strong>'${targetDb}'</strong> berhasil dipulihkan secara penuh dari berkas <code>${file}</code>.<br><small style="color: #94a3b8; display: inline-block; margin-top: 0.5rem;">Total durasi: ${elapsedSeconds} detik. Snapshot pengaman tersimpan di direktori backups.</small>`;
-                    }
-                }, 800);
+                // Pemulihan telah berhasil diluncurkan di latar belakang server!
+                // Masuk ke pemantauan proses real-time hingga selesai
+                startRestoreTracking(targetDb, file, safetyBackup);
             } else {
-                alert('GAGAL: ' + (json.message || 'Terjadi kesalahan saat memulihkan database.') + (json.error_detail ? '\n\nDetail: ' + json.error_detail : ''));
+                alert('GAGAL: ' + (json.message || 'Terjadi kesalahan saat memulai pemulihan.') + (json.error_detail ? '\n\nDetail: ' + json.error_detail : ''));
                 if (formRestoreDatabase) formRestoreDatabase.style.display = 'block';
                 if (restoreProgressContainer) restoreProgressContainer.style.display = 'none';
             }
         } catch (err) {
-            window.removeEventListener('beforeunload', onBeforeUnloadHandler);
-            clearTimeout(stepProgressTimer);
-            if (restoreTimerInterval) clearInterval(restoreTimerInterval);
-            if (restoreProgressInterval) clearInterval(restoreProgressInterval);
             alert('Kesalahan jaringan / timeout: ' + err.message);
             if (formRestoreDatabase) formRestoreDatabase.style.display = 'block';
             if (restoreProgressContainer) restoreProgressContainer.style.display = 'none';
