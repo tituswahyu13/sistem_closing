@@ -178,6 +178,11 @@ function executeMasterPipeline($options = []) {
         $pdo = getMasterPipelineDb();
         initPipelineLogTable($pdo);
 
+        // Concurrency Guard: Cek apakah Restore Database sedang aktif
+        if (file_exists(__DIR__ . '/backups/.restore.pid')) {
+            throw new Exception("Proses pemulihan (restore) database sedang berjalan di server. Eksekusi Closing Tagihan ditolak demi integritas data.");
+        }
+
         // Concurrency Guard: Cek apakah Closing Rekening sedang berjalan di server
         $stmtCrossLock = $pdo->query("SELECT IS_USED_LOCK('simpadu_closing_rekening_lock') AS cross_lock");
         $crossLockHold = $stmtCrossLock ? $stmtCrossLock->fetchColumn() : null;
@@ -759,6 +764,11 @@ function executeClosingRekeningPipeline($params = []) {
     try {
         $pdo = getMasterPipelineDb();
         initPipelineLogTable($pdo);
+
+        // Concurrency Guard: Cek apakah Restore Database sedang aktif
+        if (file_exists(__DIR__ . '/backups/.restore.pid')) {
+            throw new Exception("Proses pemulihan (restore) database sedang berjalan di server. Eksekusi Closing Rekening ditolak demi integritas data.");
+        }
 
         // Concurrency Guard: Cek apakah Closing Tagihan sedang berjalan di server
         $stmtCrossLock = $pdo->query("SELECT IS_USED_LOCK('simpadu_closing_tagihan_lock') AS cross_lock");

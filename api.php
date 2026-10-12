@@ -753,6 +753,15 @@ if ($action === 'beli' || $action === 'batal') {
         $budgetIn = floatval($input['budget_plafon'] ?? 0);
         $userId = intval($input['user_id'] ?? 1);
 
+        // Concurrency Guard: Cegah eksekusi SP jika pipeline closing sedang berjalan
+        $stmtLock1 = $pdo->query("SELECT IS_USED_LOCK('simpadu_closing_tagihan_lock')")->fetchColumn();
+        $stmtLock2 = $pdo->query("SELECT IS_USED_LOCK('simpadu_closing_rekening_lock')")->fetchColumn();
+        if (!empty($stmtLock1) || !empty($stmtLock2)) {
+            http_response_code(409);
+            echo json_encode(["status" => "error", "message" => "Eksekusi Beli YKK manual ditolak: Pipeline Closing sedang berjalan di server."]);
+            exit;
+        }
+
         $stmt = $pdo->prepare("CALL sp_eksekusi_beli_ykk(:periode, :budget, :user_id, 0, 'WEB_MANUAL')");
         $stmt->execute([
             'periode' => $periodeIn,
@@ -1068,6 +1077,15 @@ if ($action === 'beli' || $action === 'batal') {
         if (empty($file) || !file_exists(__DIR__ . '/backups/' . $file)) {
             http_response_code(404);
             echo json_encode(["status" => "error", "message" => "Berkas cadangan tidak ditemukan."]);
+            exit;
+        }
+
+        // Concurrency Guard: Cegah restore jika pipeline closing sedang berjalan
+        $stmtLock1 = $pdo->query("SELECT IS_USED_LOCK('simpadu_closing_tagihan_lock')")->fetchColumn();
+        $stmtLock2 = $pdo->query("SELECT IS_USED_LOCK('simpadu_closing_rekening_lock')")->fetchColumn();
+        if (!empty($stmtLock1) || !empty($stmtLock2)) {
+            http_response_code(409);
+            echo json_encode(["status" => "error", "message" => "Pemulihan database ditolak: Pipeline Closing sedang berjalan di server."]);
             exit;
         }
 
