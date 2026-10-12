@@ -2559,6 +2559,145 @@ async function loadPipelineLogs() {
     }
 }
 
+/**
+ * Polling helper ketika terjadi HTTP 524 (Cloudflare 100s timeout)
+ * Memantau pipeline_log sampai batch di backend MariaDB/PHP selesai (SUCCESS atau FAILED).
+ */
+async function waitForPipelineCompletion(isRekening, expectedStep = null, isResume = false) {
+    const maxAttempts = 180; // 180 x 2 detik = 6 menit
+    let attempts = 0;
+
+    return new Promise((resolve, reject) => {
+        const interval = setInterval(async () => {
+            attempts++;
+            try {
+                const action = isRekening ? 'get_rekening_pipeline_logs&limit=5' : 'get_pipeline_logs&limit=5';
+                const res = await fetch(`api.php?action=${action}`);
+                const json = await res.json();
+
+                if (json.status === 'success' && json.batches && json.batches.length > 0) {
+                    const latest = json.batches[0];
+                    if (latest && latest.steps && latest.steps.length > 0) {
+                        const stepsMap = {};
+                        let totalDuration = 0;
+                        latest.steps.forEach(st => {
+                            const sNum = parseInt(st.step, 10);
+                            stepsMap[sNum] = {
+                                name: st.step_name,
+                                status: st.status,
+                                pesan: st.pesan,
+                                durasi_detik: parseFloat(st.durasi_detik) || 0
+                            };
+                            totalDuration += parseFloat(st.durasi_detik) || 0;
+                        });
+
+                        const isRunning = latest.steps.some(st => st.status === 'RUNNING');
+                        const failStep = latest.steps.find(st => st.status === 'FAILED' || parseInt(st.step, 10) === 99);
+
+                        // 1. Kasus Single Step
+                        if (expectedStep !== null && !isResume) {
+                            const targetSt = latest.steps.find(st => parseInt(st.step, 10) === expectedStep);
+                            if (targetSt && targetSt.status === 'SUCCESS') {
+                                clearInterval(interval);
+                                return resolve({
+                                    status: 'success',
+                                    message: `Tahap ${expectedStep} berhasil diselesaikan di server`,
+                                    data: {
+                                        success: true,
+                                        batch_id: latest.batch_id,
+                                        periode: latest.periode,
+                                        durasi_total_detik: parseFloat(targetSt.durasi_detik) || totalDuration.toFixed(1),
+                                        steps: stepsMap,
+                                        logs: latest.steps.map(s => `[Step ${s.step}] ${s.status}: ${s.pesan}`)
+                                    }
+                                });
+                            }
+                            if (targetSt && targetSt.status === 'FAILED') {
+                                clearInterval(interval);
+                                return resolve({
+                                    status: 'error',
+                                    message: targetSt.pesan || 'Tahap gagal dieksekusi',
+                                    data: {
+                                        success: false,
+                                        batch_id: latest.batch_id,
+                                        error: targetSt.pesan,
+                                        steps: stepsMap
+                                    }
+                                });
+                            }
+                        }
+
+                        // 2. Kasus Resume atau Full Pipeline
+                        if (!isRunning) {
+                            const step5 = latest.steps.find(st => parseInt(st.step, 10) === 5);
+                            if (step5 && step5.status === 'SUCCESS') {
+                                clearInterval(interval);
+                                return resolve({
+                                    status: 'success',
+                                    message: 'Pipeline berhasil diselesaikan penuh di server',
+                                    data: {
+                                        success: true,
+                                        batch_id: latest.batch_id,
+                                        periode: latest.periode,
+                                        durasi_total_detik: totalDuration.toFixed(1),
+                                        steps: stepsMap,
+                                        logs: latest.steps.map(s => `[Step ${s.step}] ${s.status}: ${s.pesan}`)
+                                    }
+                                });
+                            }
+                            if (failStep) {
+                                clearInterval(interval);
+                                return resolve({
+                                    status: 'error',
+                                    message: failStep.pesan || 'Pipeline terhenti / gagal di server',
+                                    data: {
+                                        success: false,
+                                        batch_id: latest.batch_id,
+                                        error: failStep.pesan,
+                                        steps: stepsMap
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                // abaikan gangguan jaringan sesaat
+            }
+
+            if (attempts >= maxAttempts) {
+                clearInterval(interval);
+                reject(new Error('Waktu tunggu proses background server melebihi 6 menit. Silakan refresh halaman untuk melihat status akhir.'));
+            }
+        }, 2000);
+    });
+}
+
+async function parseOrWaitPipelineResponse(res, isRekening, expectedStep = null, isResume = false) {
+    if (res.status === 524 || res.status === 504) {
+        showNotification(
+            'Koneksi Cloudflare Timeout (100s)',
+            'Koneksi browser ke Cloudflare mencapai batas 100 detik (HTTP 524), namun query/proses di server tetap berjalan di latar belakang. Sistem otomatis memantau penyelesaian hingga tuntas...',
+            'warning'
+        );
+        const updateUI = isRekening ? updateRekeningProgressUI : updatePipelineProgressUI;
+        updateUI(
+            expectedStep !== null ? expectedStep : 4,
+            'RUNNING',
+            'Cloudflare timeout 100s ditoleransi: Query besar sedang diselesaikan server di latar belakang...',
+            false
+        );
+        return await waitForPipelineCompletion(isRekening, expectedStep, isResume);
+    }
+
+    try {
+        return await res.json();
+    } catch (e) {
+        const raw = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${raw.slice(0, 300) || 'Gagal parse JSON'}`);
+    }
+}
+
 async function runMasterPipeline() {
     if (!confirm("PERINGATAN:\nAnda akan menjalankan MASTER PIPELINE (6 TAHAPAN BERURUTAN):\n\n1. Tahap 0: Set OFFLINE = '0'\n2. Tahap 1: Backup Database simpadu\n3. Tahap 2: Transaksi Beli YKK\n4. Tahap 3: Transaksi Tutup Tagihan\n5. Tahap 4: Transaksi Transfer PPOB\n6. Tahap 5: Set OFFLINE = '1'\n\nLanjutkan eksekusi penuh sekarang?")) {
         return;
@@ -2654,7 +2793,7 @@ async function runMasterPipeline() {
         });
 
         clearInterval(poller);
-        const json = await res.json();
+        const json = await parseOrWaitPipelineResponse(res, false, null, false);
 
         if (json.data && json.data.logs) {
             pipelineConsoleOutput.textContent = json.data.logs.join('\n');
@@ -2767,13 +2906,7 @@ async function runSingleTagihanStep(stepNumber) {
         });
 
         clearInterval(poller);
-        let json = null;
-        try {
-            json = await res.json();
-        } catch (e) {
-            const raw = await res.text().catch(() => '');
-            throw new Error(`HTTP ${res.status}: ${raw.slice(0, 300) || 'Gagal parse JSON'}`);
-        }
+        const json = await parseOrWaitPipelineResponse(res, false, stepNumber, false);
 
         if (json.data && json.data.logs && pipelineConsoleOutput) {
             pipelineConsoleOutput.textContent = json.data.logs.join('\n');
@@ -2857,13 +2990,7 @@ async function resumeTagihanStep(stepNumber) {
         });
 
         clearInterval(poller);
-        let json = null;
-        try {
-            json = await res.json();
-        } catch (e) {
-            const raw = await res.text().catch(() => '');
-            throw new Error(`HTTP ${res.status}: ${raw.slice(0, 300) || 'Gagal parse JSON'}`);
-        }
+        const json = await parseOrWaitPipelineResponse(res, false, stepNumber, true);
 
         if (json.data && json.data.logs && pipelineConsoleOutput) {
             pipelineConsoleOutput.textContent = json.data.logs.join('\n');
@@ -3684,13 +3811,8 @@ async function runClosingRekeningPipeline() {
             })
         });
 
-        let json = null;
-        try {
-            json = await res.json();
-        } catch (parseErr) {
-            const rawText = await res.text().catch(() => '');
-            throw new Error(`HTTP ${res.status} ${res.statusText}: ${rawText.slice(0, 300) || 'Gagal memproses respons server'}`);
-        }
+        clearInterval(poller);
+        const json = await parseOrWaitPipelineResponse(res, true, null, false);
 
         clearInterval(poller);
 
@@ -3810,13 +3932,7 @@ async function runSingleRekeningStep(stepNumber) {
         });
 
         clearInterval(poller);
-        let json = null;
-        try {
-            json = await res.json();
-        } catch (e) {
-            const raw = await res.text().catch(() => '');
-            throw new Error(`HTTP ${res.status}: ${raw.slice(0, 300) || 'Gagal parse JSON'}`);
-        }
+        const json = await parseOrWaitPipelineResponse(res, true, stepNumber, false);
 
         if (json.data && json.data.logs && pipelineRekeningConsoleOutput) {
             pipelineRekeningConsoleOutput.textContent = json.data.logs.join('\n');
@@ -3909,13 +4025,7 @@ async function resumeRekeningStep(stepNumber) {
         });
 
         clearInterval(poller);
-        let json = null;
-        try {
-            json = await res.json();
-        } catch (e) {
-            const raw = await res.text().catch(() => '');
-            throw new Error(`HTTP ${res.status}: ${raw.slice(0, 300) || 'Gagal parse JSON'}`);
-        }
+        const json = await parseOrWaitPipelineResponse(res, true, stepNumber, true);
 
         if (json.data && json.data.logs && pipelineRekeningConsoleOutput) {
             pipelineRekeningConsoleOutput.textContent = json.data.logs.join('\n');
