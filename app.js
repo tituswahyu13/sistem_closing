@@ -2698,17 +2698,49 @@ async function parseOrWaitPipelineResponse(res, isRekening, expectedStep = null,
     }
 }
 
+let isTagihanPipelineExecuting = false;
+let isRekeningPipelineExecuting = false;
+
+function setTagihanPipelineActionButtonsDisabled(disabled) {
+    if (btnRunMasterPipeline) {
+        btnRunMasterPipeline.disabled = disabled;
+    }
+    document.querySelectorAll('.btn-test-tagihan-step, .btn-resume-tagihan-step').forEach(btn => {
+        btn.disabled = disabled;
+    });
+}
+
+function setRekeningPipelineActionButtonsDisabled(disabled) {
+    if (btnRunRekeningPipeline) {
+        btnRunRekeningPipeline.disabled = disabled;
+    }
+    document.querySelectorAll('.btn-test-rekening-step, .btn-resume-rekening-step').forEach(btn => {
+        btn.disabled = disabled;
+    });
+}
+
 async function runMasterPipeline() {
+    if (isTagihanPipelineExecuting) {
+        showNotification('Perhatian', 'Pipeline Closing Tagihan sedang berjalan. Harap tunggu hingga proses selesai.', 'warning');
+        return;
+    }
+    if (isRekeningPipelineExecuting) {
+        showNotification('Perhatian', 'Pipeline Closing Rekening sedang berjalan. Harap tunggu hingga proses selesai.', 'warning');
+        return;
+    }
+
     if (!confirm("PERINGATAN:\nAnda akan menjalankan MASTER PIPELINE (6 TAHAPAN BERURUTAN):\n\n1. Tahap 0: Set OFFLINE = '0'\n2. Tahap 1: Backup Database simpadu\n3. Tahap 2: Transaksi Beli YKK\n4. Tahap 3: Transaksi Tutup Tagihan\n5. Tahap 4: Transaksi Transfer PPOB\n6. Tahap 5: Set OFFLINE = '1'\n\nLanjutkan eksekusi penuh sekarang?")) {
         return;
     }
 
     if (!btnRunMasterPipeline) return;
 
+    isTagihanPipelineExecuting = true;
+    setTagihanPipelineActionButtonsDisabled(true);
+
     localStorage.removeItem('pipeline_view_standby');
     isManualPipelineReset = false;
 
-    btnRunMasterPipeline.disabled = true;
     btnRunMasterPipeline.classList.add('btn-loading');
     btnRunMasterPipeline.innerHTML = '<i class="ph ph-spinner spinner"></i> Sedang Memproses Pipeline...';
 
@@ -2836,7 +2868,11 @@ async function runMasterPipeline() {
             }
             stopPipelineStopwatch('Gagal');
             updatePipelineProgressUI(0, 'FAILED', `Master Pipeline Gagal: ${json.message || json.error}`, false);
-            alert(`GAGAL: Master Pipeline Terhenti!\n\nDetail: ${json.message || json.error}`);
+            if (json && json.locked) {
+                showNotification('Perhatian (Konflik Paralel)', json.message || 'Pipeline sedang berjalan oleh proses lain.', 'warning');
+            } else {
+                alert(`GAGAL: Master Pipeline Terhenti!\n\nDetail: ${json.message || json.error}`);
+            }
             loadPipelineLogs();
         }
     } catch (err) {
@@ -2850,7 +2886,8 @@ async function runMasterPipeline() {
         }
     } finally {
         clearInterval(poller);
-        btnRunMasterPipeline.disabled = false;
+        isTagihanPipelineExecuting = false;
+        setTagihanPipelineActionButtonsDisabled(false);
         btnRunMasterPipeline.classList.remove('btn-loading');
         btnRunMasterPipeline.innerHTML = '<i class="ph ph-play"></i> Jalankan Master Pipeline Sekarang';
     }
@@ -2866,15 +2903,26 @@ const tagihanStepNames = [
 ];
 
 async function runSingleTagihanStep(stepNumber) {
+    if (isTagihanPipelineExecuting) {
+        showNotification('Perhatian', 'Proses Closing Tagihan sedang berjalan. Harap tunggu hingga selesai.', 'warning');
+        return;
+    }
+    if (isRekeningPipelineExecuting) {
+        showNotification('Perhatian', 'Pipeline Closing Rekening sedang berjalan. Harap tunggu hingga proses selesai.', 'warning');
+        return;
+    }
+
     const sName = tagihanStepNames[stepNumber] || `Tahap ${stepNumber}`;
 
     if (!confirm(`Apakah Anda yakin ingin menguji HANYA ${sName}?`)) {
         return;
     }
 
+    isTagihanPipelineExecuting = true;
+    setTagihanPipelineActionButtonsDisabled(true);
+
     const btn = document.querySelector(`.btn-test-tagihan-step[data-step="${stepNumber}"]`);
     if (btn) {
-        btn.disabled = true;
         btn.innerHTML = '<i class="ph ph-spinner spinner"></i> Memproses...';
     }
 
@@ -2927,7 +2975,11 @@ async function runSingleTagihanStep(stepNumber) {
             const errMsg = (json.data && json.data.error) || json.message || 'Gagal mengeksekusi tahap.';
             updatePipelineProgressUI(stepNumber, 'FAILED', `Uji Coba ${sName} Gagal: ${errMsg}`, false);
             updateStepCardUI(stepNumber, 'FAILED', errMsg);
-            showNotification('Gagal', `Uji Coba ${sName} Gagal: ${errMsg}`, 'danger');
+            if (json && json.locked) {
+                showNotification('Perhatian (Konflik Paralel)', errMsg, 'warning');
+            } else {
+                showNotification('Gagal', `Uji Coba ${sName} Gagal: ${errMsg}`, 'danger');
+            }
             await loadPipelineLogs();
         }
     } catch (err) {
@@ -2938,8 +2990,9 @@ async function runSingleTagihanStep(stepNumber) {
         showNotification('Error', 'Kesalahan: ' + err.message, 'danger');
     } finally {
         clearInterval(poller);
+        isTagihanPipelineExecuting = false;
+        setTagihanPipelineActionButtonsDisabled(false);
         if (btn) {
-            btn.disabled = false;
             btn.innerHTML = `<i class="ph ph-play"></i> Uji Tahap ${stepNumber} Saja`;
         }
     }
@@ -2947,15 +3000,26 @@ async function runSingleTagihanStep(stepNumber) {
 window.runSingleTagihanStep = runSingleTagihanStep;
 
 async function resumeTagihanStep(stepNumber) {
+    if (isTagihanPipelineExecuting) {
+        showNotification('Perhatian', 'Proses Closing Tagihan sedang berjalan. Harap tunggu hingga selesai.', 'warning');
+        return;
+    }
+    if (isRekeningPipelineExecuting) {
+        showNotification('Perhatian', 'Pipeline Closing Rekening sedang berjalan. Harap tunggu hingga proses selesai.', 'warning');
+        return;
+    }
+
     const sName = tagihanStepNames[stepNumber] || `Tahap ${stepNumber}`;
 
     if (!confirm(`Apakah Anda yakin ingin MELANJUTKAN Pipeline Closing Tagihan mulai dari ${sName} hingga selesai (Tahap 5)?\n\nTahap sebelum Tahap ${stepNumber} akan dilewati.`)) {
         return;
     }
 
+    isTagihanPipelineExecuting = true;
+    setTagihanPipelineActionButtonsDisabled(true);
+
     const btn = document.querySelector(`.btn-resume-tagihan-step[data-step="${stepNumber}"]`);
     if (btn) {
-        btn.disabled = true;
         btn.innerHTML = '<i class="ph ph-spinner spinner"></i> Melanjutkan...';
     }
 
@@ -3014,7 +3078,11 @@ async function resumeTagihanStep(stepNumber) {
             const errMsg = (json.data && json.data.error) || json.message || 'Gagal melanjutkan pipeline.';
             updatePipelineProgressUI(stepNumber, 'FAILED', `Resume Pipeline Gagal: ${errMsg}`, false);
             updateStepCardUI(stepNumber, 'FAILED', errMsg);
-            showNotification('Gagal', `Resume Gagal: ${errMsg}`, 'danger');
+            if (json && json.locked) {
+                showNotification('Perhatian (Konflik Paralel)', errMsg, 'warning');
+            } else {
+                showNotification('Gagal', `Resume Gagal: ${errMsg}`, 'danger');
+            }
             await loadPipelineLogs();
         }
     } catch (err) {
@@ -3025,8 +3093,9 @@ async function resumeTagihanStep(stepNumber) {
         showNotification('Error', 'Kesalahan: ' + err.message, 'danger');
     } finally {
         clearInterval(poller);
+        isTagihanPipelineExecuting = false;
+        setTagihanPipelineActionButtonsDisabled(false);
         if (btn) {
-            btn.disabled = false;
             btn.innerHTML = `<i class="ph ph-fast-forward"></i> Lanjut dari Tahap ${stepNumber}`;
         }
     }
@@ -3718,16 +3787,27 @@ async function loadRekeningPipelineLogs() {
 }
 
 async function runClosingRekeningPipeline() {
+    if (isRekeningPipelineExecuting) {
+        showNotification('Perhatian', 'Pipeline Closing Rekening sedang berjalan. Harap tunggu hingga proses selesai.', 'warning');
+        return;
+    }
+    if (isTagihanPipelineExecuting) {
+        showNotification('Perhatian', 'Pipeline Closing Tagihan sedang berjalan. Harap tunggu hingga proses selesai.', 'warning');
+        return;
+    }
+
     if (!confirm("PERINGATAN:\nAnda akan menjalankan CLOSING REKENING PIPELINE (6 TAHAPAN BERURUTAN):\n\n1. Tahap 0: Set OFFLINE = '0' (Maintenance)\n2. Tahap 1: Backup Database simpadu (CLOSING_REKENING)\n3. Tahap 2: Closing Rekening Air\n4. Tahap 3: Transfer PPOB\n5. Tahap 4: Pelunasan Rumah Ibadah\n6. Tahap 5: Set OFFLINE = '1' (Online)\n\nLanjutkan eksekusi penuh sekarang?")) {
         return;
     }
 
     if (!btnRunRekeningPipeline) return;
 
+    isRekeningPipelineExecuting = true;
+    setRekeningPipelineActionButtonsDisabled(true);
+
     localStorage.removeItem('rekening_view_standby');
     isManualRekeningReset = false;
 
-    btnRunRekeningPipeline.disabled = true;
     btnRunRekeningPipeline.classList.add('btn-loading');
     btnRunRekeningPipeline.innerHTML = '<i class="ph ph-spinner spinner"></i> Sedang Memproses Closing Rekening...';
 
@@ -3858,7 +3938,11 @@ async function runClosingRekeningPipeline() {
             stopRekeningStopwatch('Gagal');
             const errMsg = (json && (json.message || json.error)) || 'Closing Rekening Gagal';
             updateRekeningProgressUI(0, 'FAILED', `Closing Rekening Gagal: ${errMsg}`, false);
-            showNotification('Gagal', `Closing Rekening Terhenti!\n\nDetail: ${errMsg}`, 'danger');
+            if (json && json.locked) {
+                showNotification('Perhatian (Konflik Paralel)', errMsg, 'warning');
+            } else {
+                showNotification('Gagal', `Closing Rekening Terhenti!\n\nDetail: ${errMsg}`, 'danger');
+            }
             loadRekeningPipelineLogs();
         }
     } catch (err) {
@@ -3872,7 +3956,8 @@ async function runClosingRekeningPipeline() {
         }
     } finally {
         clearInterval(poller);
-        btnRunRekeningPipeline.disabled = false;
+        isRekeningPipelineExecuting = false;
+        setRekeningPipelineActionButtonsDisabled(false);
         btnRunRekeningPipeline.classList.remove('btn-loading');
         btnRunRekeningPipeline.innerHTML = '<i class="ph ph-play"></i> Jalankan Closing Rekening Sekarang';
     }
@@ -3883,6 +3968,15 @@ if (btnRunRekeningPipeline) {
 }
 
 async function runSingleRekeningStep(stepNumber) {
+    if (isRekeningPipelineExecuting) {
+        showNotification('Perhatian', 'Pipeline Closing Rekening sedang berjalan. Harap tunggu hingga proses selesai.', 'warning');
+        return;
+    }
+    if (isTagihanPipelineExecuting) {
+        showNotification('Perhatian', 'Pipeline Closing Tagihan sedang berjalan. Harap tunggu hingga proses selesai.', 'warning');
+        return;
+    }
+
     const stepNames = [
         'Tahap 0: Mode Maintenance (OFFLINE = 0)',
         'Tahap 1: Backup Database SIMPADU',
@@ -3897,9 +3991,11 @@ async function runSingleRekeningStep(stepNumber) {
         return;
     }
 
+    isRekeningPipelineExecuting = true;
+    setRekeningPipelineActionButtonsDisabled(true);
+
     const btn = document.querySelector(`.btn-test-rekening-step[data-step="${stepNumber}"]`);
     if (btn) {
-        btn.disabled = true;
         btn.innerHTML = '<i class="ph ph-spinner spinner"></i> Memproses...';
     }
 
@@ -3953,7 +4049,11 @@ async function runSingleRekeningStep(stepNumber) {
             const errMsg = (json.data && json.data.error) || json.message || 'Gagal mengeksekusi tahap.';
             updateRekeningProgressUI(stepNumber, 'FAILED', `Uji Coba ${sName} Gagal: ${errMsg}`, false);
             updateRekeningStepCardUI(stepNumber, 'FAILED', errMsg);
-            showNotification('Gagal', `Uji Coba ${sName} Gagal: ${errMsg}`, 'danger');
+            if (json && json.locked) {
+                showNotification('Perhatian (Konflik Paralel)', errMsg, 'warning');
+            } else {
+                showNotification('Gagal', `Uji Coba ${sName} Gagal: ${errMsg}`, 'danger');
+            }
             await loadRekeningPipelineLogs();
         }
     } catch (err) {
@@ -3964,8 +4064,9 @@ async function runSingleRekeningStep(stepNumber) {
         showNotification('Error', 'Kesalahan: ' + err.message, 'danger');
     } finally {
         clearInterval(poller);
+        isRekeningPipelineExecuting = false;
+        setRekeningPipelineActionButtonsDisabled(false);
         if (btn) {
-            btn.disabled = false;
             btn.innerHTML = `<i class="ph ph-play"></i> Uji Tahap ${stepNumber} Saja`;
         }
     }
@@ -3974,6 +4075,15 @@ async function runSingleRekeningStep(stepNumber) {
 window.runSingleRekeningStep = runSingleRekeningStep;
 
 async function resumeRekeningStep(stepNumber) {
+    if (isRekeningPipelineExecuting) {
+        showNotification('Perhatian', 'Pipeline Closing Rekening sedang berjalan. Harap tunggu hingga proses selesai.', 'warning');
+        return;
+    }
+    if (isTagihanPipelineExecuting) {
+        showNotification('Perhatian', 'Pipeline Closing Tagihan sedang berjalan. Harap tunggu hingga proses selesai.', 'warning');
+        return;
+    }
+
     const stepNames = [
         'Tahap 0: Mode Maintenance (OFFLINE = 0)',
         'Tahap 1: Backup Database SIMPADU',
@@ -3988,9 +4098,11 @@ async function resumeRekeningStep(stepNumber) {
         return;
     }
 
+    isRekeningPipelineExecuting = true;
+    setRekeningPipelineActionButtonsDisabled(true);
+
     const btn = document.querySelector(`.btn-resume-rekening-step[data-step="${stepNumber}"]`);
     if (btn) {
-        btn.disabled = true;
         btn.innerHTML = '<i class="ph ph-spinner spinner"></i> Melanjutkan...';
     }
 
@@ -4061,7 +4173,11 @@ async function resumeRekeningStep(stepNumber) {
             const errMsg = (json.data && json.data.error) || json.message || 'Gagal melanjutkan Closing Rekening.';
             updateRekeningProgressUI(stepNumber, 'FAILED', `Resume Closing Rekening Gagal: ${errMsg}`, false);
             updateRekeningStepCardUI(stepNumber, 'FAILED', errMsg);
-            showNotification('Gagal', `Resume Gagal: ${errMsg}`, 'danger');
+            if (json && json.locked) {
+                showNotification('Perhatian (Konflik Paralel)', errMsg, 'warning');
+            } else {
+                showNotification('Gagal', `Resume Gagal: ${errMsg}`, 'danger');
+            }
             await loadRekeningPipelineLogs();
         }
     } catch (err) {
@@ -4072,8 +4188,9 @@ async function resumeRekeningStep(stepNumber) {
         showNotification('Error', 'Kesalahan: ' + err.message, 'danger');
     } finally {
         clearInterval(poller);
+        isRekeningPipelineExecuting = false;
+        setRekeningPipelineActionButtonsDisabled(false);
         if (btn) {
-            btn.disabled = false;
             btn.innerHTML = `<i class="ph ph-fast-forward"></i> Lanjut dari Tahap ${stepNumber}`;
         }
     }

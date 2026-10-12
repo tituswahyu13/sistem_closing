@@ -178,6 +178,27 @@ function executeMasterPipeline($options = []) {
         $pdo = getMasterPipelineDb();
         initPipelineLogTable($pdo);
 
+        // Concurrency Guard: Cek apakah Closing Rekening sedang berjalan di server
+        $stmtCrossLock = $pdo->query("SELECT IS_USED_LOCK('simpadu_closing_rekening_lock') AS cross_lock");
+        $crossLockHold = $stmtCrossLock ? $stmtCrossLock->fetchColumn() : null;
+        if (!empty($crossLockHold)) {
+            throw new Exception("Pipeline Closing Rekening sedang berjalan di server. Eksekusi Closing Tagihan ditolak untuk mencegah tabrakan data.");
+        }
+
+        // Concurrency Guard: Dapatkan Mutex Lock untuk Closing Tagihan
+        $lockStmt = $pdo->query("SELECT GET_LOCK('simpadu_closing_tagihan_lock', 0) AS lock_acquired");
+        $lockAcquired = $lockStmt ? intval($lockStmt->fetchColumn()) : 0;
+        if ($lockAcquired !== 1) {
+            $runningInfo = "Proses closing tagihan lain sedang aktif di server.";
+            try {
+                $checkRunning = $pdo->query("SELECT batch_id, step_name, waktu_mulai FROM pipeline_log WHERE batch_id NOT LIKE 'BATCH_REK_%' AND status = 'RUNNING' ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+                if ($checkRunning) {
+                    $runningInfo .= " (Batch aktif: {$checkRunning['batch_id']}, {$checkRunning['step_name']}, mulai {$checkRunning['waktu_mulai']})";
+                }
+            } catch (Exception $eIgnore) {}
+            throw new Exception("Pipeline Closing Tagihan sedang berjalan. Harap tunggu hingga proses selesai. " . $runningInfo);
+        }
+
         // -------------------------------------------------------------
         // DETEKSI PERIODE AKTIF DARI TUTUP TAGIHAN & PERIODE REKENING
         // Target Periode Eksekusi = Periode Aktif - 1 Bulan
@@ -684,6 +705,12 @@ function executeMasterPipeline($options = []) {
             } catch (Exception $ex) {}
             recordPipelineStep($pdo, $batchId, $periodeBerjalan, 99, "Pipeline Error", 'FAILED', date('Y-m-d H:i:s'), date('Y-m-d H:i:s'), $e->getMessage());
         }
+    } finally {
+        if ($pdo && isset($lockAcquired) && $lockAcquired === 1) {
+            try {
+                $pdo->query("SELECT RELEASE_LOCK('simpadu_closing_tagihan_lock')");
+            } catch (Exception $eRel) {}
+        }
     }
 
     return $pipelineResult;
@@ -732,6 +759,27 @@ function executeClosingRekeningPipeline($params = []) {
     try {
         $pdo = getMasterPipelineDb();
         initPipelineLogTable($pdo);
+
+        // Concurrency Guard: Cek apakah Closing Tagihan sedang berjalan di server
+        $stmtCrossLock = $pdo->query("SELECT IS_USED_LOCK('simpadu_closing_tagihan_lock') AS cross_lock");
+        $crossLockHold = $stmtCrossLock ? $stmtCrossLock->fetchColumn() : null;
+        if (!empty($crossLockHold)) {
+            throw new Exception("Pipeline Closing Tagihan sedang berjalan di server. Eksekusi Closing Rekening ditolak untuk mencegah tabrakan data.");
+        }
+
+        // Concurrency Guard: Dapatkan Mutex Lock untuk Closing Rekening
+        $lockStmt = $pdo->query("SELECT GET_LOCK('simpadu_closing_rekening_lock', 0) AS lock_acquired");
+        $lockAcquired = $lockStmt ? intval($lockStmt->fetchColumn()) : 0;
+        if ($lockAcquired !== 1) {
+            $runningInfo = "Proses closing rekening lain sedang aktif di server.";
+            try {
+                $checkRunning = $pdo->query("SELECT batch_id, step_name, waktu_mulai FROM pipeline_log WHERE batch_id LIKE 'BATCH_REK_%' AND status = 'RUNNING' ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+                if ($checkRunning) {
+                    $runningInfo .= " (Batch aktif: {$checkRunning['batch_id']}, {$checkRunning['step_name']}, mulai {$checkRunning['waktu_mulai']})";
+                }
+            } catch (Exception $eIgnore) {}
+            throw new Exception("Pipeline Closing Rekening sedang berjalan. Harap tunggu hingga proses selesai. " . $runningInfo);
+        }
 
         $resumeStep = intval($params['resume_step'] ?? 0);
         $onlyStep = (isset($params['only_step']) && $params['only_step'] !== null && $params['only_step'] !== '') ? intval($params['only_step']) : null;
@@ -1532,6 +1580,12 @@ function executeClosingRekeningPipeline($params = []) {
                 $stmtFail->execute(['pesan' => $e->getMessage(), 'bid' => $batchId]);
             } catch (Exception $ex) {}
             recordPipelineStep($pdo, $batchId, $periodeBerjalan, 99, "Pipeline Error", 'FAILED', date('Y-m-d H:i:s'), date('Y-m-d H:i:s'), $e->getMessage());
+        }
+    } finally {
+        if ($pdo && isset($lockAcquired) && $lockAcquired === 1) {
+            try {
+                $pdo->query("SELECT RELEASE_LOCK('simpadu_closing_rekening_lock')");
+            } catch (Exception $eRel) {}
         }
     }
 

@@ -151,6 +151,18 @@ function getAuthenticatedUser($sessionTimeoutMinutes) {
     return $_SESSION['auth_user'];
 }
 
+function handlePipelineFailureResponse($result, $defaultFailPrefix = "Pipeline gagal: ") {
+    $errorMsg = is_array($result) ? ($result['error'] ?? 'Unknown error') : strval($result);
+    $isLockConflict = (strpos($errorMsg, 'sedang berjalan') !== false);
+    http_response_code($isLockConflict ? 409 : 500);
+    echo json_encode([
+        "status" => "error",
+        "locked" => $isLockConflict,
+        "message" => ($isLockConflict ? "Perhatian (Konflik Paralel): " : $defaultFailPrefix) . $errorMsg,
+        "data" => is_array($result) ? $result : null
+    ]);
+}
+
 $charset = 'utf8mb4';
 $dsn = "mysql:host=$host;port=$port;dbname=$db;charset=$charset";
 $options = [
@@ -1275,16 +1287,10 @@ if ($action === 'beli' || $action === 'batal') {
                 "data" => $result
             ]);
         } else {
-            http_response_code(500);
-            echo json_encode([
-                "status" => "error",
-                "message" => "Master Pipeline gagal: " . ($result['error'] ?? 'Unknown error'),
-                "data" => $result
-            ]);
+            handlePipelineFailureResponse($result, "Master Pipeline gagal: ");
         }
     } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+        handlePipelineFailureResponse($e->getMessage(), "Master Pipeline gagal: ");
     }
 } elseif ($action === 'run_single_tagihan_step' || $action === 'run_single_step') {
     try {
@@ -1309,16 +1315,10 @@ if ($action === 'beli' || $action === 'batal') {
                 "data" => $result
             ]);
         } else {
-            http_response_code(500);
-            echo json_encode([
-                "status" => "error",
-                "message" => "Uji coba Tahap $step Closing Tagihan gagal: " . ($result['error'] ?? 'Unknown error'),
-                "data" => $result
-            ]);
+            handlePipelineFailureResponse($result, "Uji coba Tahap $step Closing Tagihan gagal: ");
         }
     } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+        handlePipelineFailureResponse($e->getMessage(), "Uji coba Tahap $step Closing Tagihan gagal: ");
     }
 } elseif ($action === 'resume_tagihan_pipeline' || $action === 'resume_pipeline') {
     try {
@@ -1343,16 +1343,10 @@ if ($action === 'beli' || $action === 'batal') {
                 "data" => $result
             ]);
         } else {
-            http_response_code(500);
-            echo json_encode([
-                "status" => "error",
-                "message" => "Resume Pipeline Closing Tagihan gagal: " . ($result['error'] ?? 'Unknown error'),
-                "data" => $result
-            ]);
+            handlePipelineFailureResponse($result, "Resume Pipeline Closing Tagihan gagal: ");
         }
     } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+        handlePipelineFailureResponse($e->getMessage(), "Resume Pipeline Closing Tagihan gagal: ");
     }
 } elseif ($action === 'get_pipeline_logs') {
     try {
@@ -1487,16 +1481,10 @@ if ($action === 'beli' || $action === 'batal') {
                 "data" => $result
             ]);
         } else {
-            http_response_code(500);
-            echo json_encode([
-                "status" => "error",
-                "message" => "Pipeline Closing Rekening gagal: " . ($result['error'] ?? 'Unknown error'),
-                "data" => $result
-            ]);
+            handlePipelineFailureResponse($result, "Pipeline Closing Rekening gagal: ");
         }
     } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+        handlePipelineFailureResponse($e->getMessage(), "Pipeline Closing Rekening gagal: ");
     }
 } elseif ($action === 'resume_rekening_pipeline') {
     try {
@@ -1522,16 +1510,10 @@ if ($action === 'beli' || $action === 'batal') {
                 "data" => $result
             ]);
         } else {
-            http_response_code(500);
-            echo json_encode([
-                "status" => "error",
-                "message" => "Resume Pipeline Closing Rekening gagal: " . ($result['error'] ?? 'Unknown error'),
-                "data" => $result
-            ]);
+            handlePipelineFailureResponse($result, "Resume Pipeline Closing Rekening gagal: ");
         }
     } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+        handlePipelineFailureResponse($e->getMessage(), "Resume Pipeline Closing Rekening gagal: ");
     }
 } elseif ($action === 'run_single_rekening_step') {
     try {
@@ -1556,16 +1538,10 @@ if ($action === 'beli' || $action === 'batal') {
                 "data" => $result
             ]);
         } else {
-            http_response_code(500);
-            echo json_encode([
-                "status" => "error",
-                "message" => "Uji coba Tahap $step gagal: " . ($result['error'] ?? 'Unknown error'),
-                "data" => $result
-            ]);
+            handlePipelineFailureResponse($result, "Uji coba Tahap $step Closing Rekening gagal: ");
         }
     } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+        handlePipelineFailureResponse($e->getMessage(), "Uji coba Tahap $step Closing Rekening gagal: ");
     }
 } elseif ($action === 'get_rekening_pipeline_logs') {
     try {
