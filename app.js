@@ -1,6 +1,97 @@
 // URL Backend (gunakan relative path agar fleksibel di root maupun subfolder seperti /ykk/)
 const API_BASE_URL = 'api.php';
 
+/**
+ * Global Glassmorphic Toast Notification System
+ */
+function showNotification(title, message, type = 'info') {
+    let container = document.getElementById('toast-notification-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-notification-container';
+        container.style.cssText = 'position: fixed; top: 1.5rem; right: 1.5rem; z-index: 99999; display: flex; flex-direction: column; gap: 0.75rem; max-width: 420px; pointer-events: none;';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.style.cssText = 'pointer-events: auto; padding: 0.9rem 1.15rem; border-radius: 12px; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(12px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5); display: flex; align-items: flex-start; gap: 0.85rem; color: #f8fafc; font-size: 0.875rem; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); opacity: 0; transform: translateY(-10px) scale(0.98);';
+
+    let borderColor = 'rgba(148, 163, 184, 0.3)';
+    let iconClass = 'ph-info';
+    let iconColor = '#38bdf8';
+    let borderLeftColor = '#38bdf8';
+
+    const normalizedType = String(type).toLowerCase();
+    if (normalizedType === 'success') {
+        borderColor = 'rgba(34, 197, 94, 0.4)';
+        iconClass = 'ph-check-circle';
+        iconColor = '#4ade80';
+        borderLeftColor = '#22c55e';
+    } else if (normalizedType === 'danger' || normalizedType === 'error') {
+        borderColor = 'rgba(239, 68, 68, 0.4)';
+        iconClass = 'ph-warning-circle';
+        iconColor = '#f87171';
+        borderLeftColor = '#ef4444';
+    } else if (normalizedType === 'warning') {
+        borderColor = 'rgba(234, 179, 8, 0.4)';
+        iconClass = 'ph-warning';
+        iconColor = '#facc15';
+        borderLeftColor = '#eab308';
+    }
+
+    toast.style.border = `1px solid ${borderColor}`;
+    toast.style.borderLeft = `4px solid ${borderLeftColor}`;
+
+    const iconEl = document.createElement('i');
+    iconEl.className = `ph ${iconClass}`;
+    iconEl.style.cssText = `font-size: 1.35rem; color: ${iconColor}; flex-shrink: 0; margin-top: 1px;`;
+
+    const bodyEl = document.createElement('div');
+    bodyEl.style.cssText = 'flex: 1; min-width: 0;';
+
+    if (title) {
+        const titleEl = document.createElement('div');
+        titleEl.style.cssText = 'font-weight: 600; margin-bottom: 0.2rem; color: #fff; font-size: 0.9rem;';
+        titleEl.textContent = title;
+        bodyEl.appendChild(titleEl);
+    }
+
+    if (message) {
+        const msgEl = document.createElement('div');
+        msgEl.style.cssText = 'color: #cbd5e1; line-height: 1.4; word-break: break-word; white-space: pre-line; font-size: 0.825rem;';
+        msgEl.textContent = message;
+        bodyEl.appendChild(msgEl);
+    }
+
+    const closeBtn = document.createElement('button');
+    closeBtn.innerHTML = '&times;';
+    closeBtn.style.cssText = 'background: transparent; border: none; color: #94a3b8; font-size: 1.25rem; cursor: pointer; padding: 0 0 0 0.5rem; line-height: 1;';
+    closeBtn.onclick = () => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px) scale(0.98)';
+        setTimeout(() => toast.remove(), 300);
+    };
+
+    toast.appendChild(iconEl);
+    toast.appendChild(bodyEl);
+    toast.appendChild(closeBtn);
+    container.appendChild(toast);
+
+    requestAnimationFrame(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateY(0) scale(1)';
+    });
+
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-10px) scale(0.98)';
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, 5000);
+}
+window.showNotification = showNotification;
+
 const getTanggalLike = (periode) => {
     let year = parseInt(periode.substring(0, 4));
     let month = parseInt(periode.substring(4, 6));
