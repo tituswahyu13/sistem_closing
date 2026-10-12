@@ -3029,9 +3029,23 @@ tr.row-outside-kuota:hover {
     height: 100%;
 }
 
+.audit-group-cards-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+    height: 100%;
+}
+
+@media (max-width: 1400px) {
+    .audit-group-cards-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
 @media (max-width: 768px) {
     .audit-group-cards-2,
-    .audit-group-cards-3 {
+    .audit-group-cards-3,
+    .audit-group-cards-4 {
         grid-template-columns: 1fr;
     }
 }

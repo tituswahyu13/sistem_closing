@@ -4744,12 +4744,12 @@ function switchAuditSubtab(subtabId) {
     // Toggle active state on top KPI cards
     const cardMap = {
         'uncontrolled': ['card-kpi-uncontrolled'],
-        'tagihan': ['card-kpi-rekening', 'card-kpi-tagrek', 'card-kpi-tunggak'],
+        'tagihan': ['card-kpi-rekening', 'card-kpi-tagrek', 'card-kpi-tunggak', 'card-kpi-tagrek-unflagged'],
         'angsuran': ['card-kpi-angsuran'],
         'anomali_admin': ['card-kpi-anomali-admin']
     };
 
-    ['card-kpi-uncontrolled', 'card-kpi-rekening', 'card-kpi-tagrek', 'card-kpi-tunggak', 'card-kpi-angsuran', 'card-kpi-anomali-admin'].forEach(id => {
+    ['card-kpi-uncontrolled', 'card-kpi-rekening', 'card-kpi-tagrek', 'card-kpi-tunggak', 'card-kpi-tagrek-unflagged', 'card-kpi-angsuran', 'card-kpi-anomali-admin'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.remove('active-audit-card');
     });
@@ -4800,6 +4800,7 @@ async function loadAuditSummary() {
             const elRekening = document.getElementById('audit-stat-rekening-dup');
             const elTagrek = document.getElementById('audit-stat-tagrek-dup');
             const elTunggak = document.getElementById('audit-stat-tunggak-dup');
+            const elTagrekUnflagged = document.getElementById('audit-stat-tagrek-unflagged');
             const elAngsuran = document.getElementById('audit-stat-angsuran-dup');
             const elAnomaliAdmin = document.getElementById('audit-stat-anomali-admin');
 
@@ -4810,6 +4811,7 @@ async function loadAuditSummary() {
             const totalTunggakSilang = (metrics.tunggak_duplikat || 0) + (metrics.silang_tagrek_tunggak || metrics.silang_duplikat || 0) + (metrics.silang_rekening_tunggak || 0);
             if (elTunggak) elTunggak.textContent = totalTunggakSilang.toLocaleString('id-ID');
             
+            if (elTagrekUnflagged) elTagrekUnflagged.textContent = (metrics.tagrek_rekening_unflagged || 0).toLocaleString('id-ID');
             if (elAngsuran) elAngsuran.textContent = (metrics.angsuran_duplikat || 0).toLocaleString('id-ID');
             if (elAnomaliAdmin) elAnomaliAdmin.textContent = (metrics.anomali_angsuran_admin || 0).toLocaleString('id-ID');
 
@@ -4818,6 +4820,11 @@ async function loadAuditSummary() {
             if (subUncontrolled) {
                 const pct = metrics.rekening_total > 0 ? ((metrics.rekening_belum_kontrol / metrics.rekening_total) * 100).toFixed(1) : 0;
                 subUncontrolled.textContent = `${pct}% dari ${metrics.rekening_total.toLocaleString('id-ID')} rekening aktif`;
+            }
+
+            const subTagrekUnflagged = document.getElementById('audit-sub-tagrek-unflagged');
+            if (subTagrekUnflagged && metrics.periode_tagrek_terbaru) {
+                subTagrekUnflagged.textContent = `Periode ${metrics.periode_tagrek_terbaru}`;
             }
 
             // Update subtab badges
@@ -4831,7 +4838,7 @@ async function loadAuditSummary() {
                 badgeTabUncontrolled.className = `badge ${metrics.rekening_belum_kontrol > 0 ? 'badge-warning' : 'badge-success'}`;
             }
             if (badgeTabTagihan) {
-                const totTagihanDup = (metrics.rekening_duplikat || 0) + (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.silang_tagrek_tunggak || metrics.silang_duplikat || 0) + (metrics.silang_rekening_tunggak || 0);
+                const totTagihanDup = (metrics.rekening_duplikat || 0) + (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.silang_tagrek_tunggak || metrics.silang_duplikat || 0) + (metrics.silang_rekening_tunggak || 0) + (metrics.tagrek_rekening_unflagged || 0);
                 badgeTabTagihan.textContent = totTagihanDup.toLocaleString('id-ID');
                 badgeTabTagihan.className = `badge ${totTagihanDup > 0 ? 'badge-danger' : 'badge-success'}`;
             }
@@ -4851,7 +4858,7 @@ async function loadAuditSummary() {
                     overallBadge.className = 'badge badge-success';
                     overallBadge.innerHTML = '<i class="ph ph-shield-check"></i> Siap Closing (Data Bersih)';
                 } else {
-                    const totalIssues = (metrics.rekening_belum_kontrol || 0) + (metrics.rekening_duplikat || 0) + (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.silang_tagrek_tunggak || metrics.silang_duplikat || 0) + (metrics.silang_rekening_tunggak || 0) + (metrics.angsuran_duplikat || 0) + (metrics.anomali_angsuran_admin || 0);
+                    const totalIssues = (metrics.rekening_belum_kontrol || 0) + (metrics.rekening_duplikat || 0) + (metrics.tagrek_duplikat || 0) + (metrics.tunggak_duplikat || 0) + (metrics.silang_tagrek_tunggak || metrics.silang_duplikat || 0) + (metrics.silang_rekening_tunggak || 0) + (metrics.tagrek_rekening_unflagged || 0) + (metrics.angsuran_duplikat || 0) + (metrics.anomali_angsuran_admin || 0);
                     overallBadge.className = 'badge badge-warning';
                     overallBadge.innerHTML = `<i class="ph ph-warning"></i> Perlu Perhatian (${totalIssues} Anomali)`;
                 }
@@ -5136,6 +5143,48 @@ async function loadTagihanDuplicates() {
                             <td style="text-align: right; font-family: monospace; color: #f87171;">Rp ${parseInt(row.tagihan_tunggak || 0).toLocaleString('id-ID')}</td>
                             <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.id_rekening || '-'}</td>
                             <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.id_tunggak || '-'}</td>
+                        </tr>
+                    `).join('');
+                }
+            }
+
+            // 5. Tagrek vs Rekening FLAG = 0 Anomaly
+            const tbodyTagrekUnflagged = document.getElementById('tbody-tagrek-unflagged-duplicates');
+            const badgeTagrekUnflagged = document.getElementById('badge-count-tagrek-unflagged');
+            const btnFixTagrekUnflagged = document.getElementById('btn-fix-tagrek-unflagged');
+            const tagrekUnflaggedList = data.tagrek_unflagged_duplicates || [];
+
+            if (badgeTagrekUnflagged) {
+                badgeTagrekUnflagged.textContent = `${tagrekUnflaggedList.length} Anomali`;
+                badgeTagrekUnflagged.className = `badge ${tagrekUnflaggedList.length > 0 ? 'badge-danger' : 'badge-success'}`;
+            }
+
+            if (btnFixTagrekUnflagged) {
+                btnFixTagrekUnflagged.style.display = tagrekUnflaggedList.length > 0 ? 'inline-flex' : 'none';
+            }
+
+            if (tbodyTagrekUnflagged) {
+                if (tagrekUnflaggedList.length === 0) {
+                    tbodyTagrekUnflagged.innerHTML = `
+                        <tr>
+                            <td colspan="10" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Semua data spd_tagrek terbaru sudah sinkron di spd_rekening (FLAG = 1, Bersih).
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbodyTagrekUnflagged.innerHTML = tagrekUnflaggedList.map(row => `
+                        <tr>
+                            <td><strong style="color: #ec4899; font-family: monospace;">${row.NO_PDAM}</strong></td>
+                            <td><strong style="color: #fff;">${row.NAMA || '-'}</strong></td>
+                            <td style="color: var(--text-secondary); font-size: 0.78rem;">${row.ALAMAT || '-'}</td>
+                            <td><span class="badge badge-secondary">${row.REKENING_BULAN || '-'}</span></td>
+                            <td style="text-align: center;"><span class="badge badge-warning">${row.rekening_status || '-'}</span></td>
+                            <td style="text-align: center;"><span class="badge badge-danger">FLAG = ${row.rekening_flag}</span></td>
+                            <td style="text-align: right; font-family: monospace; color: #60a5fa;">Rp ${parseInt(row.tagihan_tagrek || 0).toLocaleString('id-ID')}</td>
+                            <td style="text-align: right; font-family: monospace; color: #f87171;">Rp ${parseInt(row.tagihan_rekening || 0).toLocaleString('id-ID')}</td>
+                            <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.id_tagrek || '-'}</td>
+                            <td style="font-family: monospace; font-size: 0.75rem; color: #94a3b8;">${row.id_rekening || '-'}</td>
                         </tr>
                     `).join('');
                 }
@@ -5440,8 +5489,39 @@ function initAuditListeners() {
     document.getElementById('card-kpi-rekening')?.addEventListener('click', () => switchAuditSubtab('tagihan'));
     document.getElementById('card-kpi-tagrek')?.addEventListener('click', () => switchAuditSubtab('tagihan'));
     document.getElementById('card-kpi-tunggak')?.addEventListener('click', () => switchAuditSubtab('tagihan'));
+    document.getElementById('card-kpi-tagrek-unflagged')?.addEventListener('click', () => switchAuditSubtab('tagihan'));
     document.getElementById('card-kpi-angsuran')?.addEventListener('click', () => switchAuditSubtab('angsuran'));
     document.getElementById('card-kpi-anomali-admin')?.addEventListener('click', () => switchAuditSubtab('anomali_admin'));
+
+    // Fix tagrek vs rekening unflagged
+    document.getElementById('btn-fix-tagrek-unflagged')?.addEventListener('click', async () => {
+        if (!confirm('Apakah Anda yakin ingin menyinkronkan status FLAG = 1 pada spd_rekening untuk data yang terdaftar di spd_tagrek periode terbaru?\n\nTindakan ini mencegah terjadinya duplikat di spd_tunggak saat Tutup Tagihan.')) {
+            return;
+        }
+        const btn = document.getElementById('btn-fix-tagrek-unflagged');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="ph ph-spinner spinner"></i> Menyinkronkan...';
+        }
+        try {
+            const res = await fetch('api.php?action=fix_tagrek_unflagged', { method: 'POST' });
+            const json = await res.json();
+            if (json.status === 'success') {
+                showNotification('Sinkronisasi Berhasil', json.message || 'Data spd_rekening berhasil disinkronkan ke FLAG = 1.', 'success');
+                await refreshAuditData(false);
+            } else {
+                showNotification('Gagal Sinkronisasi', json.message || 'Terjadi kesalahan sistem.', 'danger');
+            }
+        } catch (err) {
+            console.error('Error fixing tagrek unflagged:', err);
+            showNotification('Error', err.message, 'danger');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ph ph-wrench"></i> Sinkronkan FLAG = 1';
+            }
+        }
+    });
 
     // Main Audit Ulang Refresh button
     document.getElementById('btn-refresh-audit')?.addEventListener('click', () => {

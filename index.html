@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=74">
+    <link rel="stylesheet" href="styles.css?v=75">
 </head>
 <body>
     <div class="app-container">
@@ -1294,7 +1294,7 @@
                                 <span class="badge badge-info"><i class="ph ph-receipt"></i> Cek Transfer PPOB & Tagihan</span>
                                 <span style="font-size: 0.72rem; color: var(--text-secondary);">Rekening, Tagrek, & Tunggak</span>
                             </div>
-                            <div class="audit-group-cards-3">
+                            <div class="audit-group-cards-4">
                                 <!-- KPI: Duplikat Rekening Aktif -->
                                 <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-rekening">
                                     <div class="stat-icon-wrapper info" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">
@@ -1328,6 +1328,18 @@
                                         <span class="stat-label">Tunggak & Silang</span>
                                         <h3 class="stat-value" id="audit-stat-tunggak-dup" style="color: #f87171;">0</h3>
                                         <span class="stat-sub" id="audit-sub-tunggak">Target: spd_tunggak</span>
+                                    </div>
+                                </div>
+
+                                <!-- KPI: Tagrek FLAG = 0 Anomali -->
+                                <div class="glass-panel stat-card" style="cursor: pointer;" id="card-kpi-tagrek-unflagged">
+                                    <div class="stat-icon-wrapper danger" style="background: rgba(236, 72, 153, 0.15); color: #ec4899;">
+                                        <i class="ph ph-flag-banner"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <span class="stat-label">Tagrek FLAG=0</span>
+                                        <h3 class="stat-value" id="audit-stat-tagrek-unflagged" style="color: #ec4899;">0</h3>
+                                        <span class="stat-sub" id="audit-sub-tagrek-unflagged">Wajib FLAG=1</span>
                                     </div>
                                 </div>
                             </div>
@@ -1657,6 +1669,49 @@
                                             <tr>
                                                 <td colspan="8" style="text-align: center; color: #10b981; padding: 1.5rem;">
                                                     <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Tidak ada konflik silang antara spd_rekening aktif dan spd_tunggak (Bersih).
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- 2.5 Anomali Status Tagihan: spd_tagrek vs spd_rekening FLAG = 0 -->
+                            <div class="glass-panel">
+                                <div class="panel-header">
+                                    <div>
+                                        <h2 style="color: #ec4899;"><i class="ph ph-flag-banner"></i> 2.5 Anomali Status Tagihan (spd_tagrek vs spd_rekening FLAG = 0)</h2>
+                                        <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                                            Pelanggan pada <code>spd_tagrek</code> periode terbaru (<code>IS_DELETE = 0</code>) yang di <code>spd_rekening</code> masih bernilai <code>FLAG = 0</code>. Seharusnya <code>FLAG = 1</code>; jika 0 akan masuk ke <code>spd_tunggak</code> saat Tutup Tagihan sehingga terjadi duplikat.
+                                        </p>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <span class="badge badge-secondary" id="badge-count-tagrek-unflagged">0 Anomali</span>
+                                        <button type="button" class="btn btn-sm btn-warning" id="btn-fix-tagrek-unflagged" style="display: none;">
+                                            <i class="ph ph-wrench"></i> Sinkronkan FLAG = 1
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>NO PDAM</th>
+                                                <th>NAMA</th>
+                                                <th>ALAMAT</th>
+                                                <th>PERIODE TAGREK</th>
+                                                <th>STATUS REK</th>
+                                                <th style="text-align: center;">NILAI FLAG</th>
+                                                <th style="text-align: right;">TAGIHAN TAGREK</th>
+                                                <th style="text-align: right;">TAGIHAN REKENING</th>
+                                                <th>ID TAGREK</th>
+                                                <th>ID REKENING</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tbody-tagrek-unflagged-duplicates">
+                                            <tr>
+                                                <td colspan="10" style="text-align: center; color: #10b981; padding: 1.5rem;">
+                                                    <i class="ph ph-check-circle" style="font-size: 1.2rem; vertical-align: middle;"></i> Semua data spd_tagrek terbaru sudah sinkron di spd_rekening (FLAG = 1, Bersih).
                                                 </td>
                                             </tr>
                                         </tbody>
@@ -2619,7 +2674,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=20261009_1050"></script>
+    <script src="app.js?v=20261012_0825"></script>
 </body>
 </html>
 

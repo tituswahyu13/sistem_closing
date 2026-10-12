@@ -2621,6 +2621,24 @@ if ($action === 'beli' || $action === 'batal') {
         ]);
         $cntSilangRekTung = (int)$stmtSilangRekTung->fetchColumn();
 
+        // 4c. Tagrek vs Rekening Unflagged (spd_tagrek terbaru ada tapi spd_rekening.FLAG = 0)
+        $stmtLatestTagrek = $pdo->query("SELECT MAX(REKENING_BULAN) FROM spd_tagrek WHERE IS_DELETE = 0");
+        $latestTagrekPeriode = $stmtLatestTagrek->fetchColumn() ?: $periodeTagihan;
+
+        $stmtTagrekUnflagged = $pdo->prepare("
+            SELECT COUNT(*) FROM (
+                SELECT t.NO_PDAM
+                FROM spd_tagrek t
+                JOIN spd_rekening r ON r.NO_PDAM = t.NO_PDAM AND r.PERIODE = t.REKENING_BULAN
+                WHERE t.REKENING_BULAN = :periode_tagrek 
+                  AND t.IS_DELETE = 0 
+                  AND r.FLAG = 0
+                GROUP BY t.NO_PDAM
+            ) x
+        ");
+        $stmtTagrekUnflagged->execute(['periode_tagrek' => $latestTagrekPeriode]);
+        $cntTagrekUnflagged = (int)$stmtTagrekUnflagged->fetchColumn();
+
         // 5. Angsuran Duplikat
         $stmtAngsurDup = $pdo->query("
             SELECT COUNT(*) FROM (
@@ -2658,7 +2676,7 @@ if ($action === 'beli' || $action === 'batal') {
         $cntAnomaliAdmin = (int)$stmtAnomaliAdmin->fetchColumn();
 
         // Kesimpulan status
-        $readyClosingTagihan = ($cntTagrekDup === 0 && $cntTunggakDup === 0 && $cntSilangDup === 0);
+        $readyClosingTagihan = ($cntTagrekDup === 0 && $cntTunggakDup === 0 && $cntSilangDup === 0 && $cntTagrekUnflagged === 0);
         $readyClosingRekening = ($cntUncontrolled === 0 && $cntAngsurDup === 0 && $cntAnomaliAdmin === 0 && $cntRekDup === 0 && $cntSilangRekTung === 0);
 
         echo json_encode([
@@ -2673,6 +2691,8 @@ if ($action === 'beli' || $action === 'batal') {
                 "tunggak_duplikat" => $cntTunggakDup,
                 "silang_tagrek_tunggak" => $cntSilangDup,
                 "silang_rekening_tunggak" => $cntSilangRekTung,
+                "tagrek_rekening_unflagged" => $cntTagrekUnflagged,
+                "periode_tagrek_terbaru" => $latestTagrekPeriode,
                 "angsuran_duplikat" => $cntAngsurDup,
                 "anomali_angsuran_admin" => $cntAnomaliAdmin
             ],
@@ -2893,17 +2913,71 @@ if ($action === 'beli' || $action === 'batal') {
         ]);
         $silangRekeningDuplicates = $stmtSilangRek->fetchAll(PDO::FETCH_ASSOC);
 
+        // 5. Tagrek vs Rekening Unflagged (spd_tagrek terbaru ada tapi spd_rekening.FLAG = 0)
+        $stmtLatestTagrek = $pdo->query("SELECT MAX(REKENING_BULAN) FROM spd_tagrek WHERE IS_DELETE = 0");
+        $latestTagrekPeriode = $stmtLatestTagrek->fetchColumn() ?: $reqPeriode;
+
+        $stmtTagrekUnflagged = $pdo->prepare("
+            SELECT t.NO_PDAM, s.NAMA, s.ALAMAT, t.REKENING_BULAN as periode_tagrek, r.PERIODE as periode_rekening,
+                   r.FLAG as rekening_flag, r.STATUS as rekening_status,
+                   t.JUMLAH as tagihan_tagrek, (r.RK + r.MATERAI + r.NON_AIR - r.SUBSIDI) as tagihan_rekening,
+                   t.ID as id_tagrek, r.ID as id_rekening
+            FROM spd_tagrek t
+            JOIN spd_rekening r ON r.NO_PDAM = t.NO_PDAM AND r.PERIODE = t.REKENING_BULAN
+            JOIN spd_stlgn s ON s.ID = t.STLGN_ID
+            WHERE t.REKENING_BULAN = :periode_tagrek 
+              AND t.IS_DELETE = 0 
+              AND r.FLAG = 0
+            ORDER BY t.NO_PDAM ASC
+            LIMIT 200
+        ");
+        $stmtTagrekUnflagged->execute(['periode_tagrek' => $latestTagrekPeriode]);
+        $tagrekUnflaggedList = $stmtTagrekUnflagged->fetchAll(PDO::FETCH_ASSOC);
+
         echo json_encode([
             "status" => "success",
             "periode_tagrek" => $reqPeriode,
+            "periode_tagrek_terbaru" => $latestTagrekPeriode,
             "periode_rekening" => $periodeRekeningAktif,
             "data" => [
                 "rekening_duplicates" => $rekeningDuplicates,
                 "tagrek_duplicates" => $tagrekDuplicates,
                 "tunggak_duplicates" => $tunggakDuplicates,
                 "silang_duplicates" => $silangDuplicates,
-                "silang_rekening_tunggak_duplicates" => $silangRekeningDuplicates
+                "silang_rekening_tunggak_duplicates" => $silangRekeningDuplicates,
+                "tagrek_unflagged_duplicates" => $tagrekUnflaggedList
             ]
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
+} elseif ($action === 'fix_tagrek_unflagged') {
+    try {
+        $stmtLatestTagrek = $pdo->query("SELECT MAX(REKENING_BULAN) FROM spd_tagrek WHERE IS_DELETE = 0");
+        $latestTagrekPeriode = $stmtLatestTagrek->fetchColumn();
+        if (!$latestTagrekPeriode) {
+            throw new Exception("Tidak ditemukan periode spd_tagrek yang valid.");
+        }
+
+        $stmtFix = $pdo->prepare("
+            UPDATE spd_rekening r
+            JOIN spd_tagrek t ON r.NO_PDAM = t.NO_PDAM AND r.PERIODE = t.REKENING_BULAN
+            SET r.FLAG = 1
+            WHERE t.REKENING_BULAN = :periode 
+              AND t.IS_DELETE = 0 
+              AND r.FLAG = 0
+        ");
+        $stmtFix->execute(['periode' => $latestTagrekPeriode]);
+        $affected = $stmtFix->rowCount();
+
+        logUserAudit($pdo, $currentUser ? $currentUser['username'] : 'admin', 'FIX_TAGREK_UNFLAGGED', "Sinkronisasi FLAG = 1 pada spd_rekening periode $latestTagrekPeriode: $affected baris.");
+
+        echo json_encode([
+            "status" => "success",
+            "message" => "Berhasil menyinkronkan status FLAG = 1 untuk {$affected} rekening pada periode {$latestTagrekPeriode}!",
+            "affected_rows" => $affected,
+            "periode" => $latestTagrekPeriode
         ]);
     } catch (Exception $e) {
         http_response_code(500);
