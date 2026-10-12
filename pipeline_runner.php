@@ -143,6 +143,8 @@ function executeMasterPipeline($options = []) {
     $executedBy = $options['executed_by'] ?? 'SYSTEM_CRON';
     $userId = intval($options['user_id'] ?? 1);
     $customBudget = isset($options['budget']) ? floatval($options['budget']) : null;
+    $resumeStep = intval($options['resume_step'] ?? 0);
+    $onlyStep = (isset($options['only_step']) && $options['only_step'] !== null && $options['only_step'] !== '') ? intval($options['only_step']) : null;
     $batchId = 'BATCH_' . date('Ymd_His') . '_' . substr(md5(uniqid(rand(), true)), 0, 6);
 
     $logOutput = [];
@@ -183,29 +185,47 @@ function executeMasterPipeline($options = []) {
         $tutupTagihanAktif = $pdo->query("SELECT * FROM spd_tutuptagihan WHERE IS_TUTUP = 0 LIMIT 1")->fetch();
         $periodeRekeningAktif = $pdo->query("SELECT * FROM spd_periode WHERE IS_TUTUP = 0 LIMIT 1")->fetch();
 
-        if (!$tutupTagihanAktif) {
+        if (!$tutupTagihanAktif && ($onlyStep === null || $onlyStep <= 3)) {
             throw new Exception("Tidak ditemukan data periode aktif pada spd_tutuptagihan (IS_TUTUP = 0).");
         }
         if (!$periodeRekeningAktif) {
             throw new Exception("Tidak ditemukan data periode aktif pada spd_periode (IS_TUTUP = 0).");
         }
 
-        $periodeBerjalan = $tutupTagihanAktif['PERIODE']; // e.g. 202609
-        $tahun = substr($periodeBerjalan, 0, 4);
-        $bulan = substr($periodeBerjalan, 4, 2);
+        if ($tutupTagihanAktif) {
+            $periodeBerjalan = $tutupTagihanAktif['PERIODE']; // e.g. 202609
+            $tahun = substr($periodeBerjalan, 0, 4);
+            $bulan = substr($periodeBerjalan, 4, 2);
+            $periodeTargetEksekusi = date('Ym', strtotime("$tahun-$bulan-01 -1 months"));
+            $prev_bulan = $periodeTargetEksekusi;
+            $next_tahun = date('Y', strtotime("$tahun-$bulan-01 +1 months"));
+            $next_bulan = date('m', strtotime("$tahun-$bulan-01 +1 months"));
+        } else {
+            $periodeBerjalan = sprintf("%04d%02d", $periodeRekeningAktif['TAHUN'], $periodeRekeningAktif['BULAN']);
+            $tahun = substr($periodeBerjalan, 0, 4);
+            $bulan = substr($periodeBerjalan, 4, 2);
+            $periodeTargetEksekusi = date('Ym', strtotime("$tahun-$bulan-01 -1 months"));
+            $prev_bulan = $periodeTargetEksekusi;
+            $next_tahun = date('Y', strtotime("$tahun-$bulan-01 +1 months"));
+            $next_bulan = date('m', strtotime("$tahun-$bulan-01 +1 months"));
+        }
 
-        // Target eksekusi adalah 1 bulan sebelum periode aktif tutup tagihan
-        $periodeTargetEksekusi = date('Ym', strtotime("$tahun-$bulan-01 -1 months"));
+        if (!empty($options['periode'])) {
+            $periodeTargetEksekusi = strval($options['periode']);
+            $prev_bulan = $periodeTargetEksekusi;
+        }
         $pipelineResult['periode'] = $periodeTargetEksekusi;
 
-        $prev_bulan = $periodeTargetEksekusi;
-        $next_tahun = date('Y', strtotime("$tahun-$bulan-01 +1 months"));
-        $next_bulan = date('m', strtotime("$tahun-$bulan-01 +1 months"));
-
-        $log("Deteksi Periode Otomatis:");
-        $log(" - Periode TutupTagihan Aktif di Database: $periodeBerjalan");
-        $log(" - Periode TARGET EKSEKUSI (Periode Aktif - 1 Bulan): $periodeTargetEksekusi");
-        $log(" - Periode Baru Setelah Tutup Tagihan: {$next_tahun}{$next_bulan}");
+        if ($onlyStep !== null) {
+            $log("Deteksi Mode SINGLE-STEP: Mengeksekusi HANYA Tahap $onlyStep (Periode: $periodeTargetEksekusi)");
+        } elseif ($resumeStep > 0) {
+            $log("Deteksi Mode RESUME / CONTINUE: Melanjutkan Pipeline mulai dari Tahap $resumeStep (Periode: $periodeTargetEksekusi)");
+        } else {
+            $log("Deteksi Periode Otomatis:");
+            $log(" - Periode TutupTagihan Aktif di Database: $periodeBerjalan");
+            $log(" - Periode TARGET EKSEKUSI (Periode Aktif - 1 Bulan): $periodeTargetEksekusi");
+            $log(" - Periode Baru Setelah Tutup Tagihan: {$next_tahun}{$next_bulan}");
+        }
 
         // Cari budget dari ykk_config jika tidak ditentukan manual
         $budgetPlafon = 0;
@@ -224,170 +244,179 @@ function executeMasterPipeline($options = []) {
         // =============================================================
         // TAHAP 0: SET INFO OFFLINE = '0' (MODE MAINTENANCE / PROSES)
         // =============================================================
-        $step0Name = "Tahap 0: Set Status Mode Maintenance (OFFLINE = '0')";
-        $log("\n>>> Menjalankan $step0Name...");
-        $t0_start = date('Y-m-d H:i:s');
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 0, $step0Name, 'RUNNING', $t0_start);
-        
-        $pdo->exec("UPDATE `pdam`.`info` SET `OFFLINE` = '0'");
-        $t0_end = date('Y-m-d H:i:s');
-        $log("✓ $step0Name berhasil. Sistem PPOB diset offline untuk proses batch.");
-        
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 0, $step0Name, 'SUCCESS', $t0_start, $t0_end, 'OFFLINE = 0');
-        $pipelineResult['steps'][0] = ['name' => $step0Name, 'status' => 'SUCCESS', 'pesan' => 'OFFLINE diset 0'];
+        if ($onlyStep !== null ? $onlyStep === 0 : $resumeStep <= 0) {
+            $step0Name = "Tahap 0: Set Status Mode Maintenance (OFFLINE = '0')";
+            $log("\n>>> Menjalankan $step0Name...");
+            $t0_start = date('Y-m-d H:i:s');
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 0, $step0Name, 'RUNNING', $t0_start);
+            
+            $pdo->exec("UPDATE `pdam`.`info` SET `OFFLINE` = '0'");
+            $t0_end = date('Y-m-d H:i:s');
+            $log("✓ $step0Name berhasil. Sistem PPOB diset offline untuk proses batch.");
+            
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 0, $step0Name, 'SUCCESS', $t0_start, $t0_end, 'OFFLINE = 0');
+            $pipelineResult['steps'][0] = ['name' => $step0Name, 'status' => 'SUCCESS', 'pesan' => 'OFFLINE diset 0'];
+        }
 
         // =============================================================
         // TAHAP 1: PENCADANGAN DATABASE (BACKUP SIMPADU KE .SQL.GZ)
         // =============================================================
-        $step1Name = "Tahap 1: Pencadangan Database (Backup DB simpadu)";
-        $log("\n>>> Menjalankan $step1Name...");
-        $t1_start = date('Y-m-d H:i:s');
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 1, $step1Name, 'RUNNING', $t1_start);
-        
-        $backupResult = executeBackup('CLOSING_TAGIHAN');
-        if (!$backupResult['success']) {
-            throw new Exception("Pencadangan database gagal: " . $backupResult['message']);
+        if ($onlyStep !== null ? $onlyStep === 1 : $resumeStep <= 1) {
+            $step1Name = "Tahap 1: Pencadangan Database (Backup DB simpadu)";
+            $log("\n>>> Menjalankan $step1Name...");
+            $t1_start = date('Y-m-d H:i:s');
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 1, $step1Name, 'RUNNING', $t1_start);
+            
+            $backupResult = executeBackup('CLOSING_TAGIHAN');
+            if (!$backupResult['success']) {
+                throw new Exception("Pencadangan database gagal: " . $backupResult['message']);
+            }
+            $t1_end = date('Y-m-d H:i:s');
+            $log("✓ $step1Name berhasil. File: {$backupResult['filename']} ({$backupResult['size_mb']} MB).");
+            
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 1, $step1Name, 'SUCCESS', $t1_start, $t1_end, $backupResult['message'], $backupResult);
+            $pipelineResult['steps'][1] = ['name' => $step1Name, 'status' => 'SUCCESS', 'pesan' => $backupResult['message'], 'data' => $backupResult];
         }
-        $t1_end = date('Y-m-d H:i:s');
-        $log("✓ $step1Name berhasil. File: {$backupResult['filename']} ({$backupResult['size_mb']} MB).");
-        
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 1, $step1Name, 'SUCCESS', $t1_start, $t1_end, $backupResult['message'], $backupResult);
-        $pipelineResult['steps'][1] = ['name' => $step1Name, 'status' => 'SUCCESS', 'pesan' => $backupResult['message'], 'data' => $backupResult];
 
         // =============================================================
         // TAHAP 2: TRANSAKSI BELI YKK (EKSEKUSI SP_EKSEKUSI_BELI_YKK)
         // =============================================================
-        $step2Name = "Tahap 2: Transaksi Beli YKK (Periode $periodeTargetEksekusi)";
-        $log("\n>>> Menjalankan $step2Name...");
-        $t2_start = date('Y-m-d H:i:s');
-        recordPipelineStep($pdo, $batchId, $periodeTargetEksekusi, 2, $step2Name, 'RUNNING', $t2_start);
+        if ($onlyStep !== null ? $onlyStep === 2 : $resumeStep <= 2) {
+            $step2Name = "Tahap 2: Transaksi Beli YKK (Periode $periodeTargetEksekusi)";
+            $log("\n>>> Menjalankan $step2Name...");
+            $t2_start = date('Y-m-d H:i:s');
+            recordPipelineStep($pdo, $batchId, $periodeTargetEksekusi, 2, $step2Name, 'RUNNING', $t2_start);
 
-        // Pastikan Stored Procedure dieksekusi untuk periode target (Periode Aktif - 1 Bulan)
-        $stmtSp = $pdo->prepare("CALL sp_eksekusi_beli_ykk(:periode, :budget, :user_id, 0, :executed_by)");
-        $stmtSp->execute([
-            'periode' => $periodeTargetEksekusi,
-            'budget' => $budgetPlafon,
-            'user_id' => $userId,
-            'executed_by' => $executedBy
-        ]);
-        $resYkk = $stmtSp->fetch();
-        $stmtSp->closeCursor();
+            // Pastikan Stored Procedure dieksekusi untuk periode target (Periode Aktif - 1 Bulan)
+            $stmtSp = $pdo->prepare("CALL sp_eksekusi_beli_ykk(:periode, :budget, :user_id, 0, :executed_by)");
+            $stmtSp->execute([
+                'periode' => $periodeTargetEksekusi,
+                'budget' => $budgetPlafon,
+                'user_id' => $userId,
+                'executed_by' => $executedBy
+            ]);
+            $resYkk = $stmtSp->fetch();
+            $stmtSp->closeCursor();
 
-        $t2_end = date('Y-m-d H:i:s');
-        if (!$resYkk || ($resYkk['status'] ?? '') !== 'SUCCESS') {
-            $msgYkk = $resYkk['pesan'] ?? 'Eksekusi Beli YKK gagal atau mengembalikan status tidak valid.';
-            throw new Exception("Gagal pada $step2Name: " . $msgYkk);
+            $t2_end = date('Y-m-d H:i:s');
+            if (!$resYkk || ($resYkk['status'] ?? '') !== 'SUCCESS') {
+                $msgYkk = $resYkk['pesan'] ?? 'Eksekusi Beli YKK gagal atau mengembalikan status tidak valid.';
+                throw new Exception("Gagal pada $step2Name: " . $msgYkk);
+            }
+
+            $totalTerbeli = intval($resYkk['total_rekening'] ?? 0);
+            $totalBayar = floatval($resYkk['total_bayar'] ?? 0);
+            $msgYkk = $resYkk['pesan'] ?? "Sukses membeli $totalTerbeli rekening (Rp " . number_format($totalBayar, 0, ',', '.') . ")";
+
+            $log("✓ $step2Name berhasil: Terbeli $totalTerbeli rekening, Total Bayar: Rp " . number_format($totalBayar, 0, ',', '.'));
+            recordPipelineStep($pdo, $batchId, $periodeTargetEksekusi, 2, $step2Name, 'SUCCESS', $t2_start, $t2_end, $msgYkk, $resYkk);
+            $pipelineResult['steps'][2] = ['name' => $step2Name, 'status' => 'SUCCESS', 'pesan' => $msgYkk, 'data' => $resYkk];
         }
-
-        $totalTerbeli = intval($resYkk['total_rekening'] ?? 0);
-        $totalBayar = floatval($resYkk['total_bayar'] ?? 0);
-        $msgYkk = $resYkk['pesan'] ?? "Sukses membeli $totalTerbeli rekening (Rp " . number_format($totalBayar, 0, ',', '.') . ")";
-
-        $log("✓ $step2Name berhasil: Terbeli $totalTerbeli rekening, Total Bayar: Rp " . number_format($totalBayar, 0, ',', '.'));
-        recordPipelineStep($pdo, $batchId, $periodeTargetEksekusi, 2, $step2Name, 'SUCCESS', $t2_start, $t2_end, $msgYkk, $resYkk);
-        $pipelineResult['steps'][2] = ['name' => $step2Name, 'status' => 'SUCCESS', 'pesan' => $msgYkk, 'data' => $resYkk];
 
         // =============================================================
         // TAHAP 3: TRANSAKSI TUTUP TAGIHAN (TUTUP PERIODE & PINDAH TUNGGAKAN)
         // =============================================================
-        $step3Name = "Tahap 3: Transaksi Tutup Tagihan";
-        $log("\n>>> Menjalankan $step3Name...");
-        $t3_start = date('Y-m-d H:i:s');
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start);
+        if ($onlyStep !== null ? $onlyStep === 3 : $resumeStep <= 3) {
+            $step3Name = "Tahap 3: Transaksi Tutup Tagihan";
+            $log("\n>>> Menjalankan $step3Name...");
+            $t3_start = date('Y-m-d H:i:s');
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'RUNNING', $t3_start);
 
-        $pdo->beginTransaction();
-        try {
-            // 3a. Update tutup periode yang lama
-            $pdo->prepare("UPDATE spd_tutuptagihan SET IS_TUTUP = 1, TIME_UPDATE = :now WHERE IS_TUTUP = 0")
-                ->execute(['now' => date('Y-m-d')]);
+            $pdo->beginTransaction();
+            try {
+                // 3a. Update tutup periode yang lama
+                $pdo->prepare("UPDATE spd_tutuptagihan SET IS_TUTUP = 1, TIME_UPDATE = :now WHERE IS_TUTUP = 0")
+                    ->execute(['now' => date('Y-m-d')]);
 
-            // 3b. Buat record periode baru di spd_tutuptagihan
-            $newPeriodeCode = $next_tahun . $next_bulan;
-            $pdo->prepare("INSERT INTO spd_tutuptagihan (PERIODE, IS_TUTUP) VALUES (:periode, 0)")
-                ->execute(['periode' => $newPeriodeCode]);
+                // 3b. Buat record periode baru di spd_tutuptagihan
+                $newPeriodeCode = $next_tahun . $next_bulan;
+                $pdo->prepare("INSERT INTO spd_tutuptagihan (PERIODE, IS_TUTUP) VALUES (:periode, 0)")
+                    ->execute(['periode' => $newPeriodeCode]);
 
-            // 3c. Cek jumlah data rekening belum lunas pada prev_bulan
-            $cekRekening = $pdo->prepare("
-                SELECT COUNT(*) as jml, SUM(RK + MATERAI) as rk, SUM(NON_AIR) as non_air,
-                       SUM(CASE WHEN RK+NON_AIR+MATERAI <= 50000 THEN 5000 ELSE pembulatanUang((RK+NON_AIR+MATERAI) * 0.1) END) as denda
-                FROM spd_rekening
-                WHERE PERIODE = :prev_bulan AND IS_TUTUPMETER = 1 AND FLAG = 0 AND STATUS IN ('A', 'T')
-            ");
-            $cekRekening->execute(['prev_bulan' => $prev_bulan]);
-            $dataPindahan = $cekRekening->fetch();
+                // 3c. Cek jumlah data rekening belum lunas pada prev_bulan
+                $cekRekening = $pdo->prepare("
+                    SELECT COUNT(*) as jml, SUM(RK + MATERAI) as rk, SUM(NON_AIR) as non_air,
+                           SUM(CASE WHEN RK+NON_AIR+MATERAI <= 50000 THEN 5000 ELSE pembulatanUang((RK+NON_AIR+MATERAI) * 0.1) END) as denda
+                    FROM spd_rekening
+                    WHERE PERIODE = :prev_bulan AND IS_TUTUPMETER = 1 AND FLAG = 0 AND STATUS IN ('A', 'T')
+                ");
+                $cekRekening->execute(['prev_bulan' => $prev_bulan]);
+                $dataPindahan = $cekRekening->fetch();
 
-            $totalPindah = intval($dataPindahan['jml'] ?? 0);
-            $log("   - Rekening dipindahkan ke Tunggakan (Periode $prev_bulan): $totalPindah pelanggan.");
+                $totalPindah = intval($dataPindahan['jml'] ?? 0);
+                $log("   - Rekening dipindahkan ke Tunggakan (Periode $prev_bulan): $totalPindah pelanggan.");
 
-            if ($totalPindah > 0) {
-                // 3d. Insert ke SPD_TUNGGAK dengan casting IS_YKK integer aman
-                $insertTunggakSql = "
-                INSERT INTO spd_tunggak (
-                    TANGGAL, REKENING_BULAN, NON_AIR, AIR, DENDA, MATERAI, SUBSIDI, JUMLAH,
-                    LOKBAY_ID, STLGN_ID, NO_PDAM, STGOL_ID, LUNAS, ONLINE, NOSERIAL, PH, TANGGAL_PH,
-                    IS_DELETE, IS_YKK, USER_ID_CREATE, TIME_CREATE
-                )
-                SELECT 
-                    NULL, 
-                    CONCAT(LEFT(PERIODE,4), '-', RIGHT(PERIODE,2), '-20'), 
-                    NON_AIR, 
-                    RK, 
-                    CASE WHEN RK+NON_AIR+MATERAI <= 50000 THEN 5000 ELSE pembulatanUang((RK+NON_AIR+MATERAI) * 0.1) END,
-                    MATERAI, 
-                    SUBSIDI, 
-                    RK+NON_AIR+MATERAI+CASE WHEN RK+NON_AIR+MATERAI <= 50000 THEN 5000 ELSE pembulatanUang((RK+NON_AIR+MATERAI) * 0.1) END,
-                    LOKBAY_ID, 
-                    STLGN_ID, 
-                    NO_PDAM, 
-                    STGOL_ID, 
-                    0, 
-                    NULL, 
-                    NULL, 
-                    NULL, 
-                    NULL, 
-                    0, 
-                    IF(IS_YKK = 1 OR IS_YKK = '1', 1, 0), 
-                    :user_id, 
-                    NOW()
-                FROM spd_rekening
-                WHERE PERIODE = :prev_bulan AND IS_TUTUPMETER = 1 AND FLAG = 0 AND STATUS IN ('A','T')
-                ";
-                $stmtIns = $pdo->prepare($insertTunggakSql);
-                $stmtIns->execute([
-                    'user_id' => $userId,
-                    'prev_bulan' => $prev_bulan
-                ]);
+                if ($totalPindah > 0) {
+                    // 3d. Insert ke SPD_TUNGGAK dengan casting IS_YKK integer aman
+                    $insertTunggakSql = "
+                    INSERT INTO spd_tunggak (
+                        TANGGAL, REKENING_BULAN, NON_AIR, AIR, DENDA, MATERAI, SUBSIDI, JUMLAH,
+                        LOKBAY_ID, STLGN_ID, NO_PDAM, STGOL_ID, LUNAS, ONLINE, NOSERIAL, PH, TANGGAL_PH,
+                        IS_DELETE, IS_YKK, USER_ID_CREATE, TIME_CREATE
+                    )
+                    SELECT 
+                        NULL, 
+                        CONCAT(LEFT(PERIODE,4), '-', RIGHT(PERIODE,2), '-20'), 
+                        NON_AIR, 
+                        RK, 
+                        CASE WHEN RK+NON_AIR+MATERAI <= 50000 THEN 5000 ELSE pembulatanUang((RK+NON_AIR+MATERAI) * 0.1) END,
+                        MATERAI, 
+                        SUBSIDI, 
+                        RK+NON_AIR+MATERAI+CASE WHEN RK+NON_AIR+MATERAI <= 50000 THEN 5000 ELSE pembulatanUang((RK+NON_AIR+MATERAI) * 0.1) END,
+                        LOKBAY_ID, 
+                        STLGN_ID, 
+                        NO_PDAM, 
+                        STGOL_ID, 
+                        0, 
+                        NULL, 
+                        NULL, 
+                        NULL, 
+                        NULL, 
+                        0, 
+                        IF(IS_YKK = 1 OR IS_YKK = '1', 1, 0), 
+                        :user_id, 
+                        NOW()
+                    FROM spd_rekening
+                    WHERE PERIODE = :prev_bulan AND IS_TUTUPMETER = 1 AND FLAG = 0 AND STATUS IN ('A','T')
+                    ";
+                    $stmtIns = $pdo->prepare($insertTunggakSql);
+                    $stmtIns->execute([
+                        'user_id' => $userId,
+                        'prev_bulan' => $prev_bulan
+                    ]);
 
-                // 3e. Update status di SPD_REKENING
-                $updateRekeningSql = "
-                UPDATE spd_rekening a 
-                SET a.FLAG = 1, a.IS_TUNGGAK = 1 
-                WHERE a.PERIODE = :prev_bulan AND IS_TUTUPMETER = 1 AND FLAG = 0 AND STATUS IN ('A','T')
-                ";
-                $stmtUpd = $pdo->prepare($updateRekeningSql);
-                $stmtUpd->execute(['prev_bulan' => $prev_bulan]);
+                    // 3e. Update status di SPD_REKENING
+                    $updateRekeningSql = "
+                    UPDATE spd_rekening a 
+                    SET a.FLAG = 1, a.IS_TUNGGAK = 1 
+                    WHERE a.PERIODE = :prev_bulan AND IS_TUTUPMETER = 1 AND FLAG = 0 AND STATUS IN ('A','T')
+                    ";
+                    $stmtUpd = $pdo->prepare($updateRekeningSql);
+                    $stmtUpd->execute(['prev_bulan' => $prev_bulan]);
+                }
+
+                $pdo->commit();
+                $t3_end = date('Y-m-d H:i:s');
+                $msgTutupTagihan = "Tutup Tagihan berhasil. Periode baru: $newPeriodeCode. Dipindah ke tunggak: $totalPindah pelanggan.";
+                $log("✓ $step3Name berhasil. $msgTutupTagihan");
+
+                recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'SUCCESS', $t3_start, $t3_end, $msgTutupTagihan, $dataPindahan);
+                $pipelineResult['steps'][3] = ['name' => $step3Name, 'status' => 'SUCCESS', 'pesan' => $msgTutupTagihan, 'data' => $dataPindahan];
+
+            } catch (Exception $e) {
+                $pdo->rollBack();
+                throw new Exception("Gagal pada $step3Name: " . $e->getMessage());
             }
-
-            $pdo->commit();
-            $t3_end = date('Y-m-d H:i:s');
-            $msgTutupTagihan = "Tutup Tagihan berhasil. Periode baru: $newPeriodeCode. Dipindah ke tunggak: $totalPindah pelanggan.";
-            $log("✓ $step3Name berhasil. $msgTutupTagihan");
-
-            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 3, $step3Name, 'SUCCESS', $t3_start, $t3_end, $msgTutupTagihan, $dataPindahan);
-            $pipelineResult['steps'][3] = ['name' => $step3Name, 'status' => 'SUCCESS', 'pesan' => $msgTutupTagihan, 'data' => $dataPindahan];
-
-        } catch (Exception $e) {
-            $pdo->rollBack();
-            throw new Exception("Gagal pada $step3Name: " . $e->getMessage());
         }
 
         // =============================================================
         // TAHAP 4: TRANSAKSI TRANSFER PPOB (TRUNCATE & INSERT KE PDAM.PPOB)
         // =============================================================
-        $step4Name = "Tahap 4: Transaksi Transfer Tagihan ke PPOB";
-        $log("\n>>> Menjalankan $step4Name...");
-        $t4_start = date('Y-m-d H:i:s');
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 4, $step4Name, 'RUNNING', $t4_start);
+        if ($onlyStep !== null ? $onlyStep === 4 : $resumeStep <= 4) {
+            $step4Name = "Tahap 4: Transaksi Transfer Tagihan ke PPOB";
+            $log("\n>>> Menjalankan $step4Name...");
+            $t4_start = date('Y-m-d H:i:s');
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 4, $step4Name, 'RUNNING', $t4_start);
 
         // Parameter periode rekening untuk PPOB
         $perRekening = $pdo->query("SELECT * FROM spd_periode WHERE IS_TUTUP = 0 LIMIT 1")->fetch();
@@ -607,21 +636,24 @@ function executeMasterPipeline($options = []) {
             }
             throw new Exception("Gagal pada $step4Name: " . $e->getMessage());
         }
+    }
 
         // =============================================================
         // TAHAP 5: SET INFO OFFLINE = '1' (MODE ONLINE / SELESAI)
         // =============================================================
-        $step5Name = "Tahap 5: Set Status Mode Online Kembali (OFFLINE = '1')";
-        $log("\n>>> Menjalankan $step5Name...");
-        $t5_start = date('Y-m-d H:i:s');
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 5, $step5Name, 'RUNNING', $t5_start);
+        if ($onlyStep !== null ? $onlyStep === 5 : $resumeStep <= 5) {
+            $step5Name = "Tahap 5: Set Status Mode Online Kembali (OFFLINE = '1')";
+            $log("\n>>> Menjalankan $step5Name...");
+            $t5_start = date('Y-m-d H:i:s');
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 5, $step5Name, 'RUNNING', $t5_start);
 
-        $pdo->exec("UPDATE `pdam`.`info` SET `OFFLINE` = '1'");
-        $t5_end = date('Y-m-d H:i:s');
-        $log("✓ $step5Name berhasil. Sistem PPOB diset kembali online (aktif).");
+            $pdo->exec("UPDATE `pdam`.`info` SET `OFFLINE` = '1'");
+            $t5_end = date('Y-m-d H:i:s');
+            $log("✓ $step5Name berhasil. Sistem PPOB diset kembali online (aktif).");
 
-        recordPipelineStep($pdo, $batchId, $periodeBerjalan, 5, $step5Name, 'SUCCESS', $t5_start, $t5_end, 'OFFLINE = 1');
-        $pipelineResult['steps'][5] = ['name' => $step5Name, 'status' => 'SUCCESS', 'pesan' => 'OFFLINE diset 1'];
+            recordPipelineStep($pdo, $batchId, $periodeBerjalan, 5, $step5Name, 'SUCCESS', $t5_start, $t5_end, 'OFFLINE = 1');
+            $pipelineResult['steps'][5] = ['name' => $step5Name, 'status' => 'SUCCESS', 'pesan' => 'OFFLINE diset 1'];
+        }
 
         // Selesai dengan sukses penuh
         $pipelineResult['success'] = true;

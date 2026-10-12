@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=75">
+    <link rel="stylesheet" href="styles.css?v=76">
 </head>
 <body>
     <div class="app-container">
@@ -438,6 +438,9 @@
                                 <h4 class="step-title">Maintenance Mode</h4>
                                 <p class="step-desc">Set <code>pdam.info OFFLINE = '0'</code> untuk menonaktifkan transaksi luar.</p>
                                 <div class="step-meta" id="step-meta-0">-</div>
+                                <button type="button" class="btn btn-xs btn-test-tagihan-step mt-2" data-step="0" onclick="window.runSingleTagihanStep(0)" style="width: 100%; font-size: 0.72rem; padding: 6px 8px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-play"></i> Uji Tahap 0 Saja
+                                </button>
                             </div>
 
                             <div class="step-connector"><i class="ph ph-arrow-right"></i></div>
@@ -452,6 +455,12 @@
                                 <h4 class="step-title">Backup Database</h4>
                                 <p class="step-desc">Pencadangan penuh DB <code>simpadu</code> ke arsip terkompresi <code>.sql.gz</code>.</p>
                                 <div class="step-meta" id="step-meta-1">-</div>
+                                <button type="button" class="btn btn-xs btn-test-tagihan-step mt-2" data-step="1" onclick="window.runSingleTagihanStep(1)" style="width: 100%; font-size: 0.72rem; padding: 6px 8px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-play"></i> Uji Tahap 1 Saja
+                                </button>
+                                <button type="button" class="btn btn-xs btn-resume-tagihan-step mt-1" data-step="1" onclick="window.resumeTagihanStep(1)" style="width: 100%; font-size: 0.70rem; padding: 5px 6px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-fast-forward"></i> Lanjut dari Tahap 1
+                                </button>
                             </div>
 
                             <div class="step-connector"><i class="ph ph-arrow-right"></i></div>
@@ -466,6 +475,12 @@
                                 <h4 class="step-title">Transaksi Beli YKK</h4>
                                 <p class="step-desc">Eksekusi SP <code>sp_eksekusi_beli_ykk</code> sesuai alokasi budget.</p>
                                 <div class="step-meta" id="step-meta-2">-</div>
+                                <button type="button" class="btn btn-xs btn-test-tagihan-step mt-2" data-step="2" onclick="window.runSingleTagihanStep(2)" style="width: 100%; font-size: 0.72rem; padding: 6px 8px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-play"></i> Uji Tahap 2 Saja
+                                </button>
+                                <button type="button" class="btn btn-xs btn-resume-tagihan-step mt-1" data-step="2" onclick="window.resumeTagihanStep(2)" style="width: 100%; font-size: 0.70rem; padding: 5px 6px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-fast-forward"></i> Lanjut dari Tahap 2
+                                </button>
                             </div>
 
                             <div class="step-connector"><i class="ph ph-arrow-right"></i></div>
@@ -480,6 +495,12 @@
                                 <h4 class="step-title">Tutup Tagihan</h4>
                                 <p class="step-desc">Tutup periode aktif & pindahkan sisa rekening belum lunas ke <code>spd_tunggak</code>.</p>
                                 <div class="step-meta" id="step-meta-3">-</div>
+                                <button type="button" class="btn btn-xs btn-test-tagihan-step mt-2" data-step="3" onclick="window.runSingleTagihanStep(3)" style="width: 100%; font-size: 0.72rem; padding: 6px 8px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-play"></i> Uji Tahap 3 Saja
+                                </button>
+                                <button type="button" class="btn btn-xs btn-resume-tagihan-step mt-1" data-step="3" onclick="window.resumeTagihanStep(3)" style="width: 100%; font-size: 0.70rem; padding: 5px 6px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-fast-forward"></i> Lanjut dari Tahap 3
+                                </button>
                             </div>
 
                             <div class="step-connector"><i class="ph ph-arrow-right"></i></div>
@@ -494,6 +515,12 @@
                                 <h4 class="step-title">Transfer PPOB</h4>
                                 <p class="step-desc">Truncate & sinkronisasi data loket mitra ke tabel <code>pdam.ppob</code>.</p>
                                 <div class="step-meta" id="step-meta-4">-</div>
+                                <button type="button" class="btn btn-xs btn-test-tagihan-step mt-2" data-step="4" onclick="window.runSingleTagihanStep(4)" style="width: 100%; font-size: 0.72rem; padding: 6px 8px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-play"></i> Uji Tahap 4 Saja
+                                </button>
+                                <button type="button" class="btn btn-xs btn-resume-tagihan-step mt-1" data-step="4" onclick="window.resumeTagihanStep(4)" style="width: 100%; font-size: 0.70rem; padding: 5px 6px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-fast-forward"></i> Lanjut dari Tahap 4
+                                </button>
                             </div>
 
                             <div class="step-connector"><i class="ph ph-arrow-right"></i></div>
@@ -508,6 +535,12 @@
                                 <h4 class="step-title">Online Kembali</h4>
                                 <p class="step-desc">Set <code>pdam.info OFFLINE = '1'</code>, sistem siap melayani transaksi.</p>
                                 <div class="step-meta" id="step-meta-5">-</div>
+                                <button type="button" class="btn btn-xs btn-test-tagihan-step mt-2" data-step="5" onclick="window.runSingleTagihanStep(5)" style="width: 100%; font-size: 0.72rem; padding: 6px 8px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-play"></i> Uji Tahap 5 Saja
+                                </button>
+                                <button type="button" class="btn btn-xs btn-resume-tagihan-step mt-1" data-step="5" onclick="window.resumeTagihanStep(5)" style="width: 100%; font-size: 0.70rem; padding: 5px 6px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-fast-forward"></i> Lanjut dari Tahap 5
+                                </button>
                             </div>
                         </div>
 
@@ -1027,6 +1060,9 @@
                                 <button type="button" class="btn btn-xs btn-outline-primary mt-2 btn-test-rekening-step" data-step="1" onclick="window.runSingleRekeningStep(1)" style="width: 100%; font-size: 0.72rem; padding: 6px 8px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
                                     <i class="ph ph-play"></i> Uji Tahap 1 Saja
                                 </button>
+                                <button type="button" class="btn btn-xs btn-resume-rekening-step mt-1" data-step="1" onclick="window.resumeRekeningStep(1)" style="width: 100%; font-size: 0.70rem; padding: 5px 6px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-fast-forward"></i> Lanjut dari Tahap 1
+                                </button>
                             </div>
 
                             <!-- Step 2 -->
@@ -1041,6 +1077,9 @@
                                 <div class="step-meta" id="rek-step-meta-2">-</div>
                                 <button type="button" class="btn btn-xs btn-outline-primary mt-2 btn-test-rekening-step" data-step="2" onclick="window.runSingleRekeningStep(2)" style="width: 100%; font-size: 0.72rem; padding: 6px 8px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
                                     <i class="ph ph-play"></i> Uji Tahap 2 Saja
+                                </button>
+                                <button type="button" class="btn btn-xs btn-resume-rekening-step mt-1" data-step="2" onclick="window.resumeRekeningStep(2)" style="width: 100%; font-size: 0.70rem; padding: 5px 6px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-fast-forward"></i> Lanjut dari Tahap 2
                                 </button>
                             </div>
 
@@ -1057,6 +1096,9 @@
                                 <button type="button" class="btn btn-xs btn-outline-primary mt-2 btn-test-rekening-step" data-step="3" onclick="window.runSingleRekeningStep(3)" style="width: 100%; font-size: 0.72rem; padding: 6px 8px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
                                     <i class="ph ph-play"></i> Uji Tahap 3 Saja
                                 </button>
+                                <button type="button" class="btn btn-xs btn-resume-rekening-step mt-1" data-step="3" onclick="window.resumeRekeningStep(3)" style="width: 100%; font-size: 0.70rem; padding: 5px 6px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-fast-forward"></i> Lanjut dari Tahap 3
+                                </button>
                             </div>
 
                             <!-- Step 4 -->
@@ -1072,6 +1114,9 @@
                                 <button type="button" class="btn btn-xs btn-outline-primary mt-2 btn-test-rekening-step" data-step="4" onclick="window.runSingleRekeningStep(4)" style="width: 100%; font-size: 0.72rem; padding: 6px 8px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
                                     <i class="ph ph-play"></i> Uji Tahap 4 Saja
                                 </button>
+                                <button type="button" class="btn btn-xs btn-resume-rekening-step mt-1" data-step="4" onclick="window.resumeRekeningStep(4)" style="width: 100%; font-size: 0.70rem; padding: 5px 6px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-fast-forward"></i> Lanjut dari Tahap 4
+                                </button>
                             </div>
 
                             <!-- Step 5 -->
@@ -1086,6 +1131,9 @@
                                 <div class="step-meta" id="rek-step-meta-5">-</div>
                                 <button type="button" class="btn btn-xs btn-outline-primary mt-2 btn-test-rekening-step" data-step="5" onclick="window.runSingleRekeningStep(5)" style="width: 100%; font-size: 0.72rem; padding: 6px 8px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
                                     <i class="ph ph-play"></i> Uji Tahap 5 Saja
+                                </button>
+                                <button type="button" class="btn btn-xs btn-resume-rekening-step mt-1" data-step="5" onclick="window.resumeRekeningStep(5)" style="width: 100%; font-size: 0.70rem; padding: 5px 6px; border-radius: 6px; cursor: pointer; position: relative; z-index: 10;">
+                                    <i class="ph ph-fast-forward"></i> Lanjut dari Tahap 5
                                 </button>
                             </div>
                         </div>
@@ -2674,7 +2722,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=20261012_0825"></script>
+    <script src="app.js?v=20261012_0845"></script>
 </body>
 </html>
 

@@ -1286,6 +1286,74 @@ if ($action === 'beli' || $action === 'batal') {
         http_response_code(500);
         echo json_encode(["status" => "error", "message" => $e->getMessage()]);
     }
+} elseif ($action === 'run_single_tagihan_step' || $action === 'run_single_step') {
+    try {
+        require_once __DIR__ . '/pipeline_runner.php';
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $step = isset($input['step']) ? intval($input['step']) : 0;
+        $budget = isset($input['budget']) ? floatval($input['budget']) : null;
+        $userId = intval($input['user_id'] ?? 1);
+        $executedBy = 'Uji Coba Single Step Tagihan (Tahap ' . $step . ')';
+
+        $result = executeMasterPipeline([
+            'executed_by' => $executedBy,
+            'budget' => $budget,
+            'user_id' => $userId,
+            'only_step' => $step
+        ]);
+
+        if ($result['success']) {
+            echo json_encode([
+                "status" => "success",
+                "message" => "Uji coba Tahap $step Closing Tagihan berhasil dieksekusi!",
+                "data" => $result
+            ]);
+        } else {
+            http_response_code(500);
+            echo json_encode([
+                "status" => "error",
+                "message" => "Uji coba Tahap $step Closing Tagihan gagal: " . ($result['error'] ?? 'Unknown error'),
+                "data" => $result
+            ]);
+        }
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
+} elseif ($action === 'resume_tagihan_pipeline' || $action === 'resume_pipeline') {
+    try {
+        require_once __DIR__ . '/pipeline_runner.php';
+        $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+        $resumeStep = isset($input['resume_step']) ? intval($input['resume_step']) : 1;
+        $budget = isset($input['budget']) ? floatval($input['budget']) : null;
+        $userId = intval($input['user_id'] ?? 1);
+        $executedBy = $input['executed_by'] ?? ('Resume Closing Tagihan (Mulai Tahap ' . $resumeStep . ')');
+
+        $result = executeMasterPipeline([
+            'executed_by' => $executedBy,
+            'budget' => $budget,
+            'user_id' => $userId,
+            'resume_step' => $resumeStep
+        ]);
+
+        if ($result['success']) {
+            echo json_encode([
+                "status" => "success",
+                "message" => "Lanjutan (Resume) Pipeline Closing Tagihan mulai Tahap $resumeStep berhasil dieksekusi!",
+                "data" => $result
+            ]);
+        } else {
+            http_response_code(500);
+            echo json_encode([
+                "status" => "error",
+                "message" => "Resume Pipeline Closing Tagihan gagal: " . ($result['error'] ?? 'Unknown error'),
+                "data" => $result
+            ]);
+        }
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+    }
 } elseif ($action === 'get_pipeline_logs') {
     try {
         require_once __DIR__ . '/pipeline_runner.php';
