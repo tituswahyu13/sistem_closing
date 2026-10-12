@@ -1407,6 +1407,36 @@ function executeClosingRekeningPipeline($params = []) {
             recordPipelineStep($pdo, $batchId, $periodeBerjalan, 4, $step4Name, 'RUNNING', $t4_start, null, 'Mengeksekusi UPDATE pdam.ppob SET FLAG = 9 (Pelunasan Rumah Ibadah)...');
 
             try {
+                // 4a. Bersihkan transaksi pelunasan rumah ibadah lama di pdam_trx untuk periode tagihan berjalan
+                // agar trigger ppob_trx tidak terbentur constraint Duplicate Entry PRIMARY KEY (IDLGN, BLNTAG)
+                $stmtDelTrx = $pdo->prepare("
+                    DELETE t FROM `pdam`.`pdam_trx` t
+                    JOIN `pdam`.`ppob` p ON p.IDLGN = t.IDLGN AND p.BLNTAG = t.BLNTAG
+                    WHERE p.REK = 1
+                      AND t.FLAG = 9
+                      AND (
+                          (
+                              p.GOL IN (
+                                  'Gereja,Langgar,Pura,Kelenteng (IB3)',
+                                  'Masjid Jamik (IB1)',
+                                  'Masjid kecil (IB2)'
+                              )
+                              AND (
+                                  p.IDLGN LIKE '1%' 
+                                  OR p.IDLGN LIKE '2%' 
+                                  OR p.IDLGN LIKE '3%'
+                              )
+                          )
+                          OR p.IDLGN = '12010151'
+                      )
+                ");
+                $stmtDelTrx->execute();
+                $jmlDelTrx = $stmtDelTrx->rowCount();
+                if ($jmlDelTrx > 0) {
+                    $log("   - Membersihkan $jmlDelTrx transaksi pelunasan rumah ibadah lama di pdam.pdam_trx.");
+                }
+
+                // 4b. Update status pelunasan rumah ibadah ke FLAG = 9 di pdam.ppob
                 $sqlRumahIbadah = "
                     UPDATE `pdam`.`ppob`
                     SET `FLAG` = 9,
@@ -1454,19 +1484,7 @@ function executeClosingRekeningPipeline($params = []) {
                 ];
 
             } catch (Exception $e) {
-                if (strpos($e->getMessage(), '1062 Duplicate entry') !== false) {
-                    $log("   - [INFO] Pelunasan Rumah Ibadah sudah pernah tercatat sebelumnya (Idempotent).");
-                    $t4_end = date('Y-m-d H:i:s');
-                    $pesanStep4 = "Pelunasan rekening rumah ibadah telah selesai tercatat sebelumnya.";
-                    recordPipelineStep($pdo, $batchId, $periodeBerjalan, 4, $step4Name, 'SUCCESS', $t4_start, $t4_end, $pesanStep4);
-                    $pipelineResult['steps'][4] = [
-                        'name' => $step4Name,
-                        'status' => 'SUCCESS',
-                        'pesan' => $pesanStep4
-                    ];
-                } else {
-                    throw new Exception("Gagal pada $step4Name: " . $e->getMessage());
-                }
+                throw new Exception("Gagal pada $step4Name: " . $e->getMessage());
             }
         } // End if Tahap 4
 
