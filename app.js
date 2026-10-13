@@ -768,6 +768,9 @@ function switchTab(tabId) {
     if (closingRekeningSec) closingRekeningSec.style.display = (tabId === 'closing_rekening') ? 'flex' : 'none';
     if (auditSec) auditSec.style.display = (tabId === 'audit') ? 'flex' : 'none';
     if (diagnostikSec) diagnostikSec.style.display = (tabId === 'diagnostik') ? 'flex' : 'none';
+
+    const guideDibeliPanel = document.getElementById('guide-dibeli-panel');
+    if (guideDibeliPanel) guideDibeliPanel.style.display = (tabId === 'dibeli') ? 'block' : 'none';
     
     const isTableTab = (tabId === 'beli' || tabId === 'batal' || tabId === 'dibeli');
     if (tableContainer) tableContainer.style.display = isTableTab ? 'block' : 'none';

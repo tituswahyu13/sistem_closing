@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=80">
+    <link rel="stylesheet" href="styles.css?v=81">
 </head>
 <body>
     <div class="app-container">
@@ -315,6 +315,53 @@
                         <div class="stat-details">
                             <span class="stat-label">Total Tunggakan</span>
                             <h3 class="stat-value" id="stat-tunggakan">0</h3>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panduan & Informasi Penting Rekening Dibeli YKK -->
+                <div class="glass-panel mt-3 closing-guide-panel" id="guide-dibeli-panel" style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.85)); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 12px; padding: 1rem 1.25rem; display: none;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;" onclick="const c = document.getElementById('guide-dibeli-content'); const isHidden = c.style.display === 'none'; c.style.display = isHidden ? 'grid' : 'none'; this.querySelector('.guide-toggle-icon').className = isHidden ? 'ph ph-caret-up guide-toggle-icon' : 'ph ph-caret-down guide-toggle-icon';">
+                        <div style="display: flex; align-items: center; gap: 0.65rem;">
+                            <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(59, 130, 246, 0.2); color: #60a5fa; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; flex-shrink: 0;">
+                                <i class="ph ph-check-circle"></i>
+                            </div>
+                            <div>
+                                <strong style="color: #f1f5f9; font-size: 0.92rem; display: block;">Informasi & Panduan Rekening Dibeli YKK</strong>
+                                <span style="font-size: 0.76rem; color: #94a3b8;">Petunjuk verifikasi rekening lunas, transfer sinkronisasi PPOB, dan rekonsiliasi data</span>
+                            </div>
+                        </div>
+                        <span style="font-size: 0.78rem; color: #60a5fa; display: flex; align-items: center; gap: 0.35rem; font-weight: 500;">
+                            <span>Tutup / Buka Panduan</span> <i class="ph ph-caret-up guide-toggle-icon"></i>
+                        </span>
+                    </div>
+                    
+                    <div id="guide-dibeli-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.85rem; margin-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 0.85rem;">
+                        <div class="guide-step-card" style="border-left: 3px solid #38bdf8;">
+                            <div class="guide-step-title" style="color: #38bdf8;">
+                                <i class="ph ph-check-square"></i> Status Pelunasan Rekening
+                            </div>
+                            <p class="guide-step-desc">
+                                Menampilkan seluruh rekening pelanggan yang telah berhasil dieksekusi pembeliannya oleh YKK pada proses Closing Tagihan tanggal 21. Status tercatat resmi lunas dengan lokasi bayar <strong>YKK</strong>.
+                            </p>
+                        </div>
+
+                        <div class="guide-step-card" style="border-left: 3px solid #10b981;">
+                            <div class="guide-step-title" style="color: #10b981;">
+                                <i class="ph ph-arrows-left-right"></i> Sinkronisasi ke PPOB
+                            </div>
+                            <p class="guide-step-desc">
+                                Seluruh rekening yang dibeli YKK telah otomatis ditransfer ke database <code>pdam.ppob</code> pada Tahap 4 otomatisasi, memastikan tagihan tidak akan tertagih ganda di kasir luar atau loket pembayaran.
+                            </p>
+                        </div>
+
+                        <div class="guide-step-card" style="border-left: 3px solid #c084fc;">
+                            <div class="guide-step-title" style="color: #c084fc;">
+                                <i class="ph ph-file-arrow-down"></i> Filter Periode & Ekspor Data
+                            </div>
+                            <p class="guide-step-desc">
+                                Gunakan pemilih periode di bilah atas untuk meninjau data historis pembelian. Klik tombol <strong>"Export"</strong> di pojok kanan atas tabel untuk mengunduh laporan Excel/CSV untuk keperluan pembukuan keuangan.
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -810,6 +857,53 @@
                             <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.4rem; line-height: 1.5;">
                                 Pencadangan database otomatis diproses pada <strong>Tahap 1 Master Pipeline</strong> sebelum transaksi dijalankan, atau dapat dicadangkan secara manual kapan saja di bawah ini.
                             </p>
+                        </div>
+                    </div>
+
+                    <!-- Panduan & Informasi Penting Cadangan Database -->
+                    <div class="glass-panel mt-3 closing-guide-panel" style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.85)); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 12px; padding: 1rem 1.25rem;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;" onclick="const c = document.getElementById('guide-backup-content'); const isHidden = c.style.display === 'none'; c.style.display = isHidden ? 'grid' : 'none'; this.querySelector('.guide-toggle-icon').className = isHidden ? 'ph ph-caret-up guide-toggle-icon' : 'ph ph-caret-down guide-toggle-icon';">
+                            <div style="display: flex; align-items: center; gap: 0.65rem;">
+                                <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(139, 92, 246, 0.2); color: #c084fc; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; flex-shrink: 0;">
+                                    <i class="ph ph-hard-drives"></i>
+                                </div>
+                                <div>
+                                    <strong style="color: #f1f5f9; font-size: 0.92rem; display: block;">Informasi & Panduan Cadangan Database</strong>
+                                    <span style="font-size: 0.76rem; color: #94a3b8;">Petunjuk pencadangan otomatis/manual, pemulihan (restore), dan identifikasi server</span>
+                                </div>
+                            </div>
+                            <span style="font-size: 0.78rem; color: #c084fc; display: flex; align-items: center; gap: 0.35rem; font-weight: 500;">
+                                <span>Tutup / Buka Panduan</span> <i class="ph ph-caret-up guide-toggle-icon"></i>
+                            </span>
+                        </div>
+                        
+                        <div id="guide-backup-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.85rem; margin-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 0.85rem;">
+                            <div class="guide-step-card" style="border-left: 3px solid #a855f7;">
+                                <div class="guide-step-title" style="color: #c084fc;">
+                                    <i class="ph ph-tag"></i> Penamaan & Identifikasi Server
+                                </div>
+                                <p class="guide-step-desc">
+                                    Berkas cadangan otomatis diberi tag server aktif (<strong>SIMPAM</strong> atau <strong>SIMPADU</strong>) dan dikompresi ke <code>.sql.gz</code>. Anda dapat menyaring dan melihat sumber server pada kolom tabel di bawah.
+                                </p>
+                            </div>
+
+                            <div class="guide-step-card" style="border-left: 3px solid #38bdf8;">
+                                <div class="guide-step-title" style="color: #38bdf8;">
+                                    <i class="ph ph-clock"></i> Pencadangan Terjadwal & Manual
+                                </div>
+                                <p class="guide-step-desc">
+                                    Backup otomatis berjalan di Tahap 1 Closing Tagihan (tgl 21) & Closing Rekening (tgl 1). Anda juga bisa membuat snapshot cadangan manual sewaktu-waktu dengan tombol <strong>"Cadangkan Sekarang"</strong>.
+                                </p>
+                            </div>
+
+                            <div class="guide-step-card" style="border-left: 3px solid #f87171;">
+                                <div class="guide-step-title" style="color: #f87171;">
+                                    <i class="ph ph-arrow-counter-clockwise"></i> Pemulihan (Restore) & Retensi
+                                </div>
+                                <p class="guide-step-desc">
+                                    Gunakan tombol <strong>"Pulihkan"</strong> untuk merestore database dari berkas terpilih (dilengkapi proteksi kunci closing). Berkas cadangan disimpan selama masa retensi 14 hari sebelum dibersihkan otomatis.
+                                </p>
+                            </div>
                         </div>
                     </div>
 
@@ -1452,6 +1546,53 @@
                         </div>
                     </div>
 
+                    <!-- Panduan & Informasi Penting Audit Pra-Closing -->
+                    <div class="glass-panel mt-3 closing-guide-panel" style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.85)); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 1rem 1.25rem;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;" onclick="const c = document.getElementById('guide-audit-content'); const isHidden = c.style.display === 'none'; c.style.display = isHidden ? 'grid' : 'none'; this.querySelector('.guide-toggle-icon').className = isHidden ? 'ph ph-caret-up guide-toggle-icon' : 'ph ph-caret-down guide-toggle-icon';">
+                            <div style="display: flex; align-items: center; gap: 0.65rem;">
+                                <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(16, 185, 129, 0.2); color: #34d399; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; flex-shrink: 0;">
+                                    <i class="ph ph-shield-check"></i>
+                                </div>
+                                <div>
+                                    <strong style="color: #f1f5f9; font-size: 0.92rem; display: block;">Informasi & Panduan Penting Audit Pra-Closing</strong>
+                                    <span style="font-size: 0.76rem; color: #94a3b8;">Panduan verifikasi integritas data sebelum menjalankan Closing Tagihan & Closing Rekening</span>
+                                </div>
+                            </div>
+                            <span style="font-size: 0.78rem; color: #34d399; display: flex; align-items: center; gap: 0.35rem; font-weight: 500;">
+                                <span>Tutup / Buka Panduan</span> <i class="ph ph-caret-up guide-toggle-icon"></i>
+                            </span>
+                        </div>
+                        
+                        <div id="guide-audit-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.85rem; margin-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 0.85rem;">
+                            <div class="guide-step-card" style="border-left: 3px solid #38bdf8;">
+                                <div class="guide-step-title" style="color: #38bdf8;">
+                                    <i class="ph ph-receipt"></i> Cek Tutup Tagihan (Tgl 21)
+                                </div>
+                                <p class="guide-step-desc">
+                                    Memeriksa duplikasi rekening aktif, duplikat tagrek baru, selisih tunggakan (kolektif/non-air), dan duplikat No Pelanggan di <code>pdam.ppob</code>. Pastikan seluruh indikator berstatus <strong>0 Anomali (Hijau)</strong> sebelum tanggal 21.
+                                </p>
+                            </div>
+
+                            <div class="guide-step-card" style="border-left: 3px solid #fbbf24;">
+                                <div class="guide-step-title" style="color: #fbbf24;">
+                                    <i class="ph ph-warning-circle"></i> Cek Tutup Rekening (Tgl 1)
+                                </div>
+                                <p class="guide-step-desc">
+                                    Memeriksa master angsuran ganda (<code>spd_angsuran</code>), duplikat rekang (<code>spd_rekang</code>), dan rekening yang belum dikontrol. Semua rekening periode berjalan wajib terkontrol sebelum closing rekening dijalankan.
+                                </p>
+                            </div>
+
+                            <div class="guide-step-card" style="border-left: 3px solid #10b981;">
+                                <div class="guide-step-title" style="color: #10b981;">
+                                    <i class="ph ph-wrench"></i> Audit Ulang & Perbaikan Data
+                                </div>
+                                <p class="guide-step-desc">
+                                    Gunakan tombol <strong>"Audit Ulang"</strong> untuk memindai database terkini. Jika ditemukan anomali, klik kartu terkait untuk melihat rincian pelanggan dan gunakan tombol aksi perbaikan otomatis yang tersedia.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Grouped KPI Summary Cards -->
                     <div class="audit-kpi-groups mt-4">
                         <!-- Group 1: Validasi Integritas Tutup Tagihan (PPOB, Rekening, Tagrek, Tunggak) -->
@@ -2038,6 +2179,53 @@
                             <button type="button" class="btn btn-primary" id="btn-hero-open-switcher">
                                 <i class="ph ph-swap"></i> Beralih Database
                             </button>
+                        </div>
+                    </div>
+
+                    <!-- Panduan & Informasi Penting Diagnostik Server -->
+                    <div class="glass-panel mt-3 closing-guide-panel" style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.85)); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 1rem 1.25rem;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;" onclick="const c = document.getElementById('guide-diag-content'); const isHidden = c.style.display === 'none'; c.style.display = isHidden ? 'grid' : 'none'; this.querySelector('.guide-toggle-icon').className = isHidden ? 'ph ph-caret-up guide-toggle-icon' : 'ph ph-caret-down guide-toggle-icon';">
+                            <div style="display: flex; align-items: center; gap: 0.65rem;">
+                                <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(56, 189, 248, 0.2); color: #38bdf8; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; flex-shrink: 0;">
+                                    <i class="ph ph-cpu"></i>
+                                </div>
+                                <div>
+                                    <strong style="color: #f1f5f9; font-size: 0.92rem; display: block;">Informasi & Panduan Diagnostik Server & Database</strong>
+                                    <span style="font-size: 0.76rem; color: #94a3b8;">Panduan telemetri sumber daya, pengalihan server database, dan integritas skema</span>
+                                </div>
+                            </div>
+                            <span style="font-size: 0.78rem; color: #38bdf8; display: flex; align-items: center; gap: 0.35rem; font-weight: 500;">
+                                <span>Tutup / Buka Panduan</span> <i class="ph ph-caret-up guide-toggle-icon"></i>
+                            </span>
+                        </div>
+                        
+                        <div id="guide-diag-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.85rem; margin-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 0.85rem;">
+                            <div class="guide-step-card" style="border-left: 3px solid #38bdf8;">
+                                <div class="guide-step-title" style="color: #38bdf8;">
+                                    <i class="ph ph-hard-drives"></i> Sumber Daya & Kapasitas Disk
+                                </div>
+                                <p class="guide-step-desc">
+                                    Memantau penggunaan CPU, memori RAM, dan ruang disk server secara realtime. Pastikan sisa ruang disk penyimpanan minimal 5 GB sebelum proses backup dan transaksi closing dijalankan.
+                                </p>
+                            </div>
+
+                            <div class="guide-step-card" style="border-left: 3px solid #a855f7;">
+                                <div class="guide-step-title" style="color: #c084fc;">
+                                    <i class="ph ph-swap"></i> Beralih Server (SIMPAM ⇄ SIMPADU)
+                                </div>
+                                <p class="guide-step-desc">
+                                    Gunakan tombol <strong>"Beralih Database"</strong> untuk berpindah instan antara lingkungan <strong>Development (SIMPAM - 192.168.0.10)</strong> dan <strong>Production (SIMPADU - 192.168.8.11)</strong> secara aman tanpa restart aplikasi.
+                                </p>
+                            </div>
+
+                            <div class="guide-step-card" style="border-left: 3px solid #10b981;">
+                                <div class="guide-step-title" style="color: #10b981;">
+                                    <i class="ph ph-database"></i> Integritas Skema & Koneksi
+                                </div>
+                                <p class="guide-step-desc">
+                                    Panel di bawah memverifikasi kesehatan koneksi MariaDB serta ketersediaan tabel & stored procedure inti (<code>sp_eksekusi_beli_ykk</code>, <code>ykk_config</code>, dll). Tombol perbaikan otomatis tersedia bila skema belum lengkap.
+                                </p>
+                            </div>
                         </div>
                     </div>
 
@@ -2840,7 +3028,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=20261013_1010"></script>
+    <script src="app.js?v=20261013_1018"></script>
 </body>
 </html>
 
