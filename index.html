@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <link rel="stylesheet" href="styles.css?v=78">
+    <link rel="stylesheet" href="styles.css?v=79">
 </head>
 <body>
     <div class="app-container">
@@ -396,6 +396,53 @@
                         </div>
                     </div>
 
+                    <!-- Panduan & Informasi Operasional Closing Tagihan -->
+                    <div class="glass-panel mt-3 closing-guide-panel" style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.85)); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 12px; padding: 1rem 1.25rem;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;" onclick="const c = document.getElementById('guide-pipeline-content'); const isHidden = c.style.display === 'none'; c.style.display = isHidden ? 'grid' : 'none'; this.querySelector('.guide-toggle-icon').className = isHidden ? 'ph ph-caret-up guide-toggle-icon' : 'ph ph-caret-down guide-toggle-icon';">
+                            <div style="display: flex; align-items: center; gap: 0.65rem;">
+                                <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(139, 92, 246, 0.2); color: #c084fc; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; flex-shrink: 0;">
+                                    <i class="ph ph-info"></i>
+                                </div>
+                                <div>
+                                    <strong style="color: #f1f5f9; font-size: 0.92rem; display: block;">Informasi & Panduan Operasional Closing Tagihan</strong>
+                                    <span style="font-size: 0.76rem; color: #94a3b8;">Petunjuk pengubahan jadwal, pembatalan antrean, dan reset status visual</span>
+                                </div>
+                            </div>
+                            <span style="font-size: 0.78rem; color: #a78bfa; display: flex; align-items: center; gap: 0.35rem; font-weight: 500;">
+                                <span>Tutup / Buka Panduan</span> <i class="ph ph-caret-up guide-toggle-icon"></i>
+                            </span>
+                        </div>
+                        
+                        <div id="guide-pipeline-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.85rem; margin-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 0.85rem;">
+                            <div class="guide-step-card" style="border-left: 3px solid #38bdf8;">
+                                <div class="guide-step-title" style="color: #38bdf8;">
+                                    <i class="ph ph-calendar-plus"></i> Mengubah Jadwal
+                                </div>
+                                <p class="guide-step-desc">
+                                    Jika sudah ada jadwal antrean dan ingin diganti tanggal/jamnya, cukup tentukan waktu baru pada form pengaturan di bawah, lalu klik <strong>"Simpan Jadwal Antrean"</strong>. Jadwal lama otomatis ditimpa.
+                                </p>
+                            </div>
+
+                            <div class="guide-step-card" style="border-left: 3px solid #f87171;">
+                                <div class="guide-step-title" style="color: #f87171;">
+                                    <i class="ph ph-x-circle"></i> Membatalkan Antrean
+                                </div>
+                                <p class="guide-step-desc">
+                                    Untuk membatalkan otomatisasi yang sedang mengantre, klik tombol <strong>"Batalkan Antrean"</strong> pada form pengaturan atau tombol <strong>"Reset ke Standby"</strong>. Status antrean akan diubah menjadi <em>Cancelled</em>.
+                                </p>
+                            </div>
+
+                            <div class="guide-step-card" style="border-left: 3px solid #a78bfa;">
+                                <div class="guide-step-title" style="color: #a78bfa;">
+                                    <i class="ph ph-arrow-counter-clockwise"></i> Bersihkan Riwayat / Reset
+                                </div>
+                                <p class="guide-step-desc">
+                                    Jika layar stepper masih menampilkan status kegagalan/riwayat dari eksekusi batch sebelumnya, klik <strong>"Reset ke Standby"</strong> di pojok kanan kartu alur tahapan untuk mengembalikan status ke kondisi normal siap jalan.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Visual Pipeline Stepper (6 Steps) -->
                     <div class="glass-panel mt-4 pipeline-stepper-panel" style="padding: 1.75rem 1.5rem;">
                         <div class="panel-header" style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
@@ -600,7 +647,9 @@
                                             <i class="ph ph-calendar"></i> Tgl 21 Pukul 00:05 (Standar)
                                         </button>
                                     </div>
-                                    <small class="form-hint">Runner cron server akan otomatis memproses seluruh 6 tahapan saat waktu ini tercapai.</small>
+                                    <small class="form-hint" style="color: #94a3b8; display: block; margin-top: 0.35rem;">
+                                        <i class="ph ph-info"></i> <strong>Tips:</strong> Runner cron server akan otomatis memproses seluruh 6 tahapan saat waktu ini tercapai. Untuk mengubah jadwal cukup simpan waktu baru. Untuk membatalkan, klik <em>"Batalkan Antrean"</em>.
+                                    </small>
                                 </div>
 
                                 <div class="form-group">
@@ -612,9 +661,12 @@
                                     <small class="form-hint">Kosongkan / isi 0 jika ingin membeli seluruh rekening yang memenuhi syarat tanpa batasan kuota.</small>
                                 </div>
 
-                                <div class="form-actions">
+                                <div class="form-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                                     <button type="submit" class="btn btn-primary" id="btn-save-config">
                                         <i class="ph ph-floppy-disk"></i> Simpan Jadwal Antrean
+                                    </button>
+                                    <button type="button" class="btn btn-secondary" id="btn-cancel-pipeline-schedule" style="border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; background: rgba(239, 68, 68, 0.1);" title="Batalkan antrean jadwal otomatis">
+                                        <i class="ph ph-x-circle"></i> Batalkan Antrean
                                     </button>
                                     <button type="button" class="btn btn-secondary" id="btn-run-simulasi">
                                         <i class="ph ph-play-circle"></i> Uji Simulasi
@@ -1000,6 +1052,53 @@
                         </div>
                     </div>
 
+                    <!-- Panduan & Informasi Operasional Closing Rekening -->
+                    <div class="glass-panel mt-3 closing-guide-panel" style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.85)); border: 1px solid rgba(14, 165, 233, 0.3); border-radius: 12px; padding: 1rem 1.25rem;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;" onclick="const c = document.getElementById('guide-rekening-content'); const isHidden = c.style.display === 'none'; c.style.display = isHidden ? 'grid' : 'none'; this.querySelector('.guide-toggle-icon').className = isHidden ? 'ph ph-caret-up guide-toggle-icon' : 'ph ph-caret-down guide-toggle-icon';">
+                            <div style="display: flex; align-items: center; gap: 0.65rem;">
+                                <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(14, 165, 233, 0.2); color: #38bdf8; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; flex-shrink: 0;">
+                                    <i class="ph ph-info"></i>
+                                </div>
+                                <div>
+                                    <strong style="color: #f1f5f9; font-size: 0.92rem; display: block;">Informasi & Panduan Operasional Closing Rekening</strong>
+                                    <span style="font-size: 0.76rem; color: #94a3b8;">Petunjuk pengubahan jadwal, pembatalan antrean, dan reset status visual</span>
+                                </div>
+                            </div>
+                            <span style="font-size: 0.78rem; color: #38bdf8; display: flex; align-items: center; gap: 0.35rem; font-weight: 500;">
+                                <span>Tutup / Buka Panduan</span> <i class="ph ph-caret-up guide-toggle-icon"></i>
+                            </span>
+                        </div>
+                        
+                        <div id="guide-rekening-content" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0.85rem; margin-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 0.85rem;">
+                            <div class="guide-step-card" style="border-left: 3px solid #38bdf8;">
+                                <div class="guide-step-title" style="color: #38bdf8;">
+                                    <i class="ph ph-calendar-plus"></i> Mengubah Jadwal
+                                </div>
+                                <p class="guide-step-desc">
+                                    Untuk mengganti jadwal antrean closing rekening, cukup tentukan waktu baru pada form pengaturan di bawah, lalu klik <strong>"Simpan Jadwal Antrean"</strong>. Jadwal tersimpan otomatis diperbarui.
+                                </p>
+                            </div>
+
+                            <div class="guide-step-card" style="border-left: 3px solid #f87171;">
+                                <div class="guide-step-title" style="color: #f87171;">
+                                    <i class="ph ph-x-circle"></i> Membatalkan Antrean
+                                </div>
+                                <p class="guide-step-desc">
+                                    Untuk membatalkan otomatisasi closing rekening yang sedang mengantre, klik tombol <strong>"Batalkan Antrean"</strong> pada form pengaturan atau tombol <strong>"Reset ke Standby"</strong>.
+                                </p>
+                            </div>
+
+                            <div class="guide-step-card" style="border-left: 3px solid #a78bfa;">
+                                <div class="guide-step-title" style="color: #a78bfa;">
+                                    <i class="ph ph-arrow-counter-clockwise"></i> Bersihkan Riwayat / Reset
+                                </div>
+                                <p class="guide-step-desc">
+                                    Jika layar stepper masih menampilkan status proses atau kegagalan batch sebelumnya, klik <strong>"Reset ke Standby"</strong> pada kartu alur untuk menetralkan tampilan kembali ke kondisi siap jalan.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Visual Pipeline Stepper (6 Steps) -->
                     <div class="glass-panel mt-4 pipeline-stepper-panel" style="padding: 1.75rem 1.5rem;">
                         <div class="panel-header" style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
@@ -1195,12 +1294,17 @@
                                             <i class="ph ph-calendar"></i> Tgl 1 Pukul 00:00 (Standar)
                                         </button>
                                     </div>
-                                    <small class="form-hint">Runner cron server akan otomatis memproses seluruh 6 tahapan saat waktu ini tercapai.</small>
+                                    <small class="form-hint" style="color: #94a3b8; display: block; margin-top: 0.35rem;">
+                                        <i class="ph ph-info"></i> <strong>Tips:</strong> Runner cron server akan otomatis memproses closing rekening saat waktu ini tercapai. Untuk mengubah jadwal cukup simpan waktu baru. Untuk membatalkan, klik <em>"Batalkan Antrean"</em>.
+                                    </small>
                                 </div>
 
-                                <div class="form-actions">
+                                <div class="form-actions" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                                     <button type="submit" class="btn btn-primary" id="btn-save-rekening-config" style="background: linear-gradient(135deg, #0284c7, #0ea5e9);">
                                         <i class="ph ph-floppy-disk"></i> Simpan Jadwal Antrean
+                                    </button>
+                                    <button type="button" class="btn btn-secondary" id="btn-cancel-rekening-schedule" style="border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; background: rgba(239, 68, 68, 0.1);" title="Batalkan antrean jadwal otomatis">
+                                        <i class="ph ph-x-circle"></i> Batalkan Antrean
                                     </button>
                                     <button type="button" class="btn btn-secondary" id="btn-refresh-rekening-configs">
                                         <i class="ph ph-arrows-clockwise"></i> Refresh Status
@@ -2735,7 +2839,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=20261013_0840"></script>
+    <script src="app.js?v=20261013_0955"></script>
 </body>
 </html>
 

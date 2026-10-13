@@ -3352,6 +3352,33 @@ if (btnResetPipelineStepper) {
     });
 }
 
+const btnCancelPipelineSchedule = document.getElementById('btn-cancel-pipeline-schedule');
+if (btnCancelPipelineSchedule) {
+    btnCancelPipelineSchedule.addEventListener('click', async () => {
+        if (!confirm('Apakah Anda yakin ingin membatalkan jadwal antrean closing tagihan yang tersimpan?\n\nTindakan ini akan menonaktifkan status antrean (CANCELLED).')) {
+            return;
+        }
+        btnCancelPipelineSchedule.disabled = true;
+        btnCancelPipelineSchedule.innerHTML = '<i class="ph ph-spinner spinner"></i> Membatalkan...';
+        try {
+            const res = await fetch('api.php?action=reset_pipeline_status', { method: 'POST' });
+            const json = await res.json();
+            if (json.status === 'success') {
+                showNotification('Sukses', 'Jadwal antrean closing tagihan berhasil dibatalkan.', 'success');
+                await loadAutomationConfig();
+                await loadPipelineLogs();
+            } else {
+                showNotification('Gagal', json.message || 'Gagal membatalkan antrean jadwal.', 'danger');
+            }
+        } catch (err) {
+            showNotification('Error', 'Terjadi kesalahan jaringan: ' + err.message, 'danger');
+        } finally {
+            btnCancelPipelineSchedule.disabled = false;
+            btnCancelPipelineSchedule.innerHTML = '<i class="ph ph-x-circle"></i> Batalkan Antrean';
+        }
+    });
+}
+
 // ==========================================
 // CLOSING REKENING PIPELINE & SCHEDULER
 // ==========================================
@@ -4510,6 +4537,33 @@ if (btnResetRekeningStepper) {
         } finally {
             btnResetRekeningStepper.disabled = false;
             btnResetRekeningStepper.innerHTML = '<i class="ph ph-arrow-counter-clockwise"></i> Reset ke Standby';
+        }
+    });
+}
+
+const btnCancelRekeningSchedule = document.getElementById('btn-cancel-rekening-schedule');
+if (btnCancelRekeningSchedule) {
+    btnCancelRekeningSchedule.addEventListener('click', async () => {
+        if (!confirm('Apakah Anda yakin ingin membatalkan jadwal antrean closing rekening yang tersimpan?\n\nTindakan ini akan menonaktifkan status antrean (CANCELLED).')) {
+            return;
+        }
+        btnCancelRekeningSchedule.disabled = true;
+        btnCancelRekeningSchedule.innerHTML = '<i class="ph ph-spinner spinner"></i> Membatalkan...';
+        try {
+            const res = await fetch('api.php?action=reset_rekening_pipeline_status', { method: 'POST' });
+            const json = await res.json();
+            if (json.status === 'success') {
+                showNotification('Sukses', 'Jadwal antrean closing rekening berhasil dibatalkan.', 'success');
+                await loadRekeningConfig();
+                await loadRekeningPipelineLogs();
+            } else {
+                showNotification('Gagal', json.message || 'Gagal membatalkan antrean jadwal.', 'danger');
+            }
+        } catch (err) {
+            showNotification('Error', 'Terjadi kesalahan jaringan: ' + err.message, 'danger');
+        } finally {
+            btnCancelRekeningSchedule.disabled = false;
+            btnCancelRekeningSchedule.innerHTML = '<i class="ph ph-x-circle"></i> Batalkan Antrean';
         }
     });
 }

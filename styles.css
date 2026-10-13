@@ -3779,3 +3779,43 @@ tr.row-outside-kuota:hover {
     }
 }
 
+/* Closing Guide & Information Panels */
+.closing-guide-panel {
+    transition: all 0.25s ease;
+}
+
+.closing-guide-panel:hover {
+    border-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+.guide-step-card {
+    background: rgba(15, 23, 42, 0.65);
+    padding: 0.9rem 1rem;
+    border-radius: 9px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.guide-step-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.guide-step-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.guide-step-desc {
+    font-size: 0.78rem;
+    color: #cbd5e1;
+    margin: 0;
+    line-height: 1.55;
+}
+
+
