@@ -92,6 +92,18 @@ function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
 
     $retentionDays = 14;
     $timestamp = date('Ymd_His');
+
+    // Deteksi sumber server (SIMPAM / SIMPADU / LOCAL)
+    $serverSource = 'SIMPAM';
+    if (str_contains($host, '192.168.8.11')) {
+        $serverSource = 'SIMPADU';
+    } elseif (str_contains($host, '192.168.0.10')) {
+        $serverSource = 'SIMPAM';
+    } elseif (str_contains($host, '127.0.0.1') || strtolower($host) === 'localhost') {
+        $serverSource = 'LOCAL';
+    } else {
+        $serverSource = strtoupper(preg_replace('/[^a-zA-Z0-9]/', '', $host));
+    }
     
     // Sanitasi label kustom user jika ada
     $labelPart = '';
@@ -103,7 +115,7 @@ function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
         }
     }
 
-    $backupFile = "{$backupDir}/{$db}_{$normalizedType}{$labelPart}_p{$activePeriode}_{$timestamp}.sql.gz";
+    $backupFile = "{$backupDir}/{$db}_{$serverSource}_{$normalizedType}{$labelPart}_p{$activePeriode}_{$timestamp}.sql.gz";
     $logFile = "{$backupDir}/backup.log";
 
     $writeLog = function($msg) use ($logFile) {
@@ -113,7 +125,7 @@ function executeBackup($backupType = 'TAGIHAN', $customLabel = '') {
     };
 
     $writeLog("========================================================");
-    $writeLog("Memulai proses backup database '{$db}' (Tipe: {$normalizedType}, Periode: {$activePeriode})...");
+    $writeLog("Memulai proses backup database '{$db}' (Server: {$serverSource}, Tipe: {$normalizedType}, Periode: {$activePeriode})...");
     $writeLog("Host: {$host}:{$port} | User: {$user} | Target: {$backupFile}");
 
     // Cari binary mysqldump & gzip

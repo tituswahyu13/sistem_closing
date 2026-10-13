@@ -807,6 +807,16 @@ if ($action === 'beli' || $action === 'batal') {
                     $ageDays = floor(($now - $mtime) / (60 * 60 * 24));
                     $fname = basename($filePath);
 
+                    // Ekstraksi sumber server (SIMPAM / SIMPADU / LOCAL)
+                    $fileServer = '-';
+                    if (str_contains($fname, 'SIMPADU')) {
+                        $fileServer = 'SIMPADU';
+                    } elseif (str_contains($fname, 'SIMPAM')) {
+                        $fileServer = 'SIMPAM';
+                    } elseif (str_contains($fname, 'LOCAL')) {
+                        $fileServer = 'LOCAL';
+                    }
+
                     // Ekstraksi tipe closing dan label
                     $closingType = 'MANUAL';
                     $typeBadge = 'Manual Snapshot';
@@ -823,7 +833,7 @@ if ($action === 'beli' || $action === 'batal') {
                         $typeBadge = 'Manual Snapshot';
                     }
 
-                    // Ekstraksi label kustom (misal: simpadu_MANUAL_sebelum_tarif_p202609_...)
+                    // Ekstraksi label kustom (misal: simpadu_SIMPAM_MANUAL_sebelum_tarif_p202609_...)
                     if (preg_match('/(?:MANUAL|CLOSING_TAGIHAN|CLOSING_REKENING)_([a-zA-Z0-9_-]+)_p\d{6}_/', $fname, $mNote)) {
                         $customNote = str_replace('_', ' ', $mNote[1]);
                     }
@@ -844,6 +854,7 @@ if ($action === 'beli' || $action === 'batal') {
 
                     $files[] = [
                         "filename" => $fname,
+                        "server" => $fileServer,
                         "type" => $closingType,
                         "type_label" => $typeBadge,
                         "custom_note" => $customNote,
@@ -1638,7 +1649,7 @@ if ($action === 'beli' || $action === 'batal') {
         if ($hasActiveBatch) {
             $backupDir = __DIR__ . '/backups';
             if (is_dir($backupDir)) {
-                $files = glob($backupDir . '/simpadu_CLOSING_REKENING_*.sql.gz');
+                $files = glob($backupDir . '/simpadu_*CLOSING_REKENING_*.sql.gz');
                 if ($files) {
                     usort($files, function($a, $b) { return filemtime($b) - filemtime($a); });
                     $latestFile = $files[0];

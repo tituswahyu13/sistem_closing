@@ -1727,7 +1727,7 @@ async function loadBackupData() {
             if (backupLogConsole) backupLogConsole.textContent = d.log || 'Belum ada catatan log aktivitas.';
 
             if (!d.files || d.files.length === 0) {
-                backupTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-secondary);">Belum ada berkas cadangan di direktori backups. Silakan klik "Cadangkan Sekarang".</td></tr>';
+                backupTableBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 2rem; color: var(--text-secondary);">Belum ada berkas cadangan di direktori backups. Silakan klik "Cadangkan Sekarang".</td></tr>';
                 return;
             }
 
@@ -1735,6 +1735,16 @@ async function loadBackupData() {
             d.files.forEach((file, index) => {
                 const tr = document.createElement('tr');
                 const badgeClass = file.age_days < d.retention_days ? 'badge-success' : 'badge-danger';
+                
+                let serverBadge = '<span class="badge badge-secondary" style="font-size: 0.72rem; opacity: 0.7;">-</span>';
+                if (file.server === 'SIMPADU' || (file.filename && file.filename.includes('SIMPADU'))) {
+                    serverBadge = '<span class="badge badge-prod" style="font-size: 0.75rem; padding: 3px 8px; font-weight: 600;"><i class="ph ph-database"></i> SIMPADU</span>';
+                } else if (file.server === 'SIMPAM' || (file.filename && file.filename.includes('SIMPAM'))) {
+                    serverBadge = '<span class="badge badge-dev" style="font-size: 0.75rem; padding: 3px 8px; font-weight: 600;"><i class="ph ph-database"></i> SIMPAM</span>';
+                } else if (file.server === 'LOCAL' || (file.filename && file.filename.includes('LOCAL'))) {
+                    serverBadge = '<span class="badge badge-info" style="font-size: 0.75rem; padding: 3px 8px;">LOCAL</span>';
+                }
+
                 tr.innerHTML = `
                     <td><strong>${index + 1}</strong></td>
                     <td>
@@ -1743,6 +1753,7 @@ async function loadBackupData() {
                             <strong>${file.filename}</strong>
                         </div>
                     </td>
+                    <td style="text-align: center;">${serverBadge}</td>
                     <td style="text-align: center;">
                         <span class="badge badge-primary" style="font-family: monospace; font-size: 0.8rem; background: rgba(99, 102, 241, 0.15); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.35); padding: 0.35rem 0.65rem;">
                             <i class="ph ph-calendar-check"></i> ${file.periode_label || file.periode}
@@ -1767,7 +1778,7 @@ async function loadBackupData() {
     } catch (e) {
         console.error('Gagal memuat berkas backup:', e);
         if (backupTableBody) {
-            backupTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; padding: 2rem; color: #ef4444;">Gagal memuat data cadangan: ${e.message}</td></tr>`;
+            backupTableBody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 2rem; color: #ef4444;">Gagal memuat data cadangan: ${e.message}</td></tr>`;
         }
     }
 }
@@ -1904,6 +1915,20 @@ function updateBackupFilenamePreview() {
     
     let cleanLabel = labelRaw.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/^_+|_+$/g, '').substring(0, 30);
     const labelPart = cleanLabel ? `_${cleanLabel}` : '';
+
+    // Deteksi server aktif (SIMPAM / SIMPADU)
+    let currentServer = 'SIMPAM';
+    const serverHeaderLabel = document.getElementById('diag-active-db-label');
+    const rekDbLabel = document.getElementById('rekening-db-indicator');
+    if (serverHeaderLabel && serverHeaderLabel.textContent.includes('SIMPADU')) {
+        currentServer = 'SIMPADU';
+    } else if (rekDbLabel && rekDbLabel.textContent.includes('SIMPADU')) {
+        currentServer = 'SIMPADU';
+    } else if (typeof lastMetricsData !== 'undefined' && lastMetricsData && lastMetricsData.database) {
+        if (lastMetricsData.database.env_type === 'Production' || (lastMetricsData.database.host && lastMetricsData.database.host.includes('8.11'))) {
+            currentServer = 'SIMPADU';
+        }
+    }
     
     // Perkiraan periode aktif
     const now = new Date();
@@ -1914,7 +1939,7 @@ function updateBackupFilenamePreview() {
     // Tagihan p-active vs Rekening p-active
     const periodStr = `${curYear}${curMonth}`;
     
-    backupFilenamePreview.textContent = `simpadu_${type}${labelPart}_p${periodStr}_${curTimestamp}.sql.gz`;
+    backupFilenamePreview.textContent = `simpadu_${currentServer}_${type}${labelPart}_p${periodStr}_${curTimestamp}.sql.gz`;
 }
 
 function openBackupModal() {
