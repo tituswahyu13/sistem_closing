@@ -3026,16 +3026,9 @@ tr.row-outside-kuota:hover {
 
 /* Audit KPI Card Groups */
 .audit-kpi-groups {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    display: flex;
+    flex-direction: column;
     gap: 1.25rem;
-    align-items: stretch;
-}
-
-@media (max-width: 1200px) {
-    .audit-kpi-groups {
-        grid-template-columns: 1fr;
-    }
 }
 
 .audit-kpi-group {
@@ -3087,8 +3080,11 @@ tr.row-outside-kuota:hover {
     height: 100%;
 }
 
-@media (max-width: 1400px) {
+@media (max-width: 1100px) {
     .audit-group-cards-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .audit-group-cards-3 {
         grid-template-columns: repeat(2, 1fr);
     }
 }
