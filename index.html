@@ -32,7 +32,7 @@
             </div>
             
             <nav class="sidebar-nav">
-                <!-- Menu Beli & Batal disembunyikan sesuai permintaan -->
+                <!-- Menu Beli & Batal disembunyikan -->
                 <button class="nav-item" data-tab="beli" style="display: none;">
                     <i class="ph ph-shopping-cart"></i>
                     <span>Rencana Beli YKK</span>
@@ -41,26 +41,38 @@
                     <i class="ph ph-x-circle"></i>
                     <span>Rencana Pembatalan YKK</span>
                 </button>
-                <button class="nav-item" data-tab="dibeli">
-                    <i class="ph ph-check-circle"></i>
-                    <span>Rekening Dibeli YKK</span>
-                </button>
-                <button class="nav-item active" data-tab="pipeline">
-                    <i class="ph ph-git-merge"></i>
-                    <span>Closing Tagihan</span>
-                </button>
-                <button class="nav-item" data-tab="closing_rekening">
-                    <i class="ph ph-receipt"></i>
-                    <span>Closing Rekening</span>
-                </button>
+
+                <!-- 1. Audit Pra-Closing -->
                 <button class="nav-item" data-tab="audit">
                     <i class="ph ph-shield-check"></i>
                     <span>Audit Pra-Closing</span>
                 </button>
+
+                <!-- 2. Closing Tagihan -->
+                <button class="nav-item active" data-tab="pipeline">
+                    <i class="ph ph-git-merge"></i>
+                    <span>Closing Tagihan</span>
+                </button>
+
+                <!-- 3. Rekening Dibeli YKK -->
+                <button class="nav-item" data-tab="dibeli">
+                    <i class="ph ph-check-circle"></i>
+                    <span>Rekening Dibeli YKK</span>
+                </button>
+
+                <!-- 4. Closing Rekening -->
+                <button class="nav-item" data-tab="closing_rekening">
+                    <i class="ph ph-receipt"></i>
+                    <span>Closing Rekening</span>
+                </button>
+
+                <!-- 5. Cadangan Database -->
                 <button class="nav-item" data-tab="backup">
                     <i class="ph ph-hard-drives"></i>
                     <span>Cadangan Database</span>
                 </button>
+
+                <!-- 6. Diagnostik Server -->
                 <button class="nav-item" data-tab="diagnostik">
                     <i class="ph ph-cpu"></i>
                     <span>Diagnostik Server</span>
@@ -2723,7 +2735,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=20261013_0830"></script>
+    <script src="app.js?v=20261013_0840"></script>
 </body>
 </html>
 
