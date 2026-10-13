@@ -3116,22 +3116,9 @@ tr.row-outside-kuota:hover {
     transform: translateY(-2px);
 }
 
-/* Audit Subtabs Navigation Bar */
+/* Audit Subtabs Navigation Bar (Disembunyikan: Digantikan oleh klik langsung pada Card KPI) */
 .audit-subtabs-nav {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    padding: 0.45rem 0.6rem;
-    background: rgba(15, 23, 42, 0.7);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
-    overflow-x: auto;
-    backdrop-filter: blur(12px);
-    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.2);
-}
-
-.audit-subtabs-nav::-webkit-scrollbar {
-    height: 4px;
+    display: none !important;
 }
 .audit-subtabs-nav::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.12);
