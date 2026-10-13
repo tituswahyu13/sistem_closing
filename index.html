@@ -32,11 +32,12 @@
             </div>
             
             <nav class="sidebar-nav">
-                <button class="nav-item active" data-tab="beli">
+                <!-- Menu Beli & Batal disembunyikan sesuai permintaan -->
+                <button class="nav-item" data-tab="beli" style="display: none;">
                     <i class="ph ph-shopping-cart"></i>
                     <span>Rencana Beli YKK</span>
                 </button>
-                <button class="nav-item" data-tab="batal">
+                <button class="nav-item" data-tab="batal" style="display: none;">
                     <i class="ph ph-x-circle"></i>
                     <span>Rencana Pembatalan YKK</span>
                 </button>
@@ -44,7 +45,7 @@
                     <i class="ph ph-check-circle"></i>
                     <span>Rekening Dibeli YKK</span>
                 </button>
-                <button class="nav-item" data-tab="pipeline">
+                <button class="nav-item active" data-tab="pipeline">
                     <i class="ph ph-git-merge"></i>
                     <span>Closing Tagihan</span>
                 </button>
@@ -157,7 +158,7 @@
         <!-- Main Content -->
         <main class="main-content">
             <header class="topbar">
-                <h1 id="page-title">Rencana Beli YKK</h1>
+                <h1 id="page-title">Closing Tagihan</h1>
                 <div class="topbar-actions">
                     <!-- Segmented Server Switcher in Topbar -->
                     <div class="topbar-server-switcher" id="topbar-server-switcher" title="Klik untuk beralih target database server">
@@ -2722,7 +2723,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=20261012_1100"></script>
+    <script src="app.js?v=20261013_0830"></script>
 </body>
 </html>
 

@@ -374,11 +374,12 @@ function updatePeriodeUI() {
     
     // Update SQL Code
     if (sqlCode) {
-        sqlCode.textContent = getQueries(periode, dateVal)[currentTab];
+        const queries = getQueries(periode, dateVal);
+        sqlCode.textContent = queries[currentTab] || '';
     }
 }
 
-let currentTab = 'beli';
+let currentTab = 'pipeline';
 let currentData = []; // Store the data globally for search and export
 
 // Inisialisasi default date picker ke tanggal hari ini
@@ -4519,10 +4520,10 @@ const paramTab = urlParams.get('tab');
 const paramDate = urlParams.get('date');
 const autoLoad = urlParams.get('autoload');
 
-if (paramTab && (paramTab === 'beli' || paramTab === 'batal' || paramTab === 'dibeli' || paramTab === 'otomasi' || paramTab === 'pipeline' || paramTab === 'closing_rekening' || paramTab === 'backup')) {
+if (paramTab && (paramTab === 'dibeli' || paramTab === 'otomasi' || paramTab === 'pipeline' || paramTab === 'closing_rekening' || paramTab === 'backup' || paramTab === 'audit' || paramTab === 'diagnostik' || paramTab === 'beli' || paramTab === 'batal')) {
     switchTab(paramTab);
 } else {
-    switchTab('beli');
+    switchTab('pipeline');
 }
 
 if (paramDate) {
