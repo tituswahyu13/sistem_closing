@@ -2312,25 +2312,55 @@ if ($action === 'beli' || $action === 'batal') {
         } catch (Exception $e) {}
 
         // 4. Closing Table Integrity & Existence Check
-        $vitalTables = ['spd_rekening', 'spd_angsuran', 'spd_tagrek', 'spd_tunggak', 'spd_periode', 'spd_stlgn', 'ppob', 'pipeline_log', 'rekening_pipeline_log', 'closing_audit_log'];
+        $vitalTableDefs = [
+            ['table' => 'spd_rekening', 'db' => null, 'display' => 'spd_rekening'],
+            ['table' => 'spd_angsuran', 'db' => null, 'display' => 'spd_angsuran'],
+            ['table' => 'spd_tagrek', 'db' => null, 'display' => 'spd_tagrek'],
+            ['table' => 'spd_tunggak', 'db' => null, 'display' => 'spd_tunggak'],
+            ['table' => 'spd_periode', 'db' => null, 'display' => 'spd_periode'],
+            ['table' => 'spd_stlgn', 'db' => null, 'display' => 'spd_stlgn'],
+            ['table' => 'ppob', 'db' => 'pdam', 'display' => 'pdam.ppob'],
+            ['table' => 'info', 'db' => 'pdam', 'display' => 'pdam.info'],
+            ['table' => 'pipeline_log', 'db' => null, 'display' => 'pipeline_log'],
+            ['table' => 'closing_audit_log', 'db' => null, 'display' => 'closing_audit_log']
+        ];
         $tableHealth = [];
-        foreach ($vitalTables as $vt) {
+        foreach ($vitalTableDefs as $vt) {
+            $tbl = $vt['table'];
+            $preferredDb = $vt['db'];
+            $displayName = $vt['display'];
             $exists = false;
             $rowCount = 0;
             $engine = 'InnoDB';
+
             try {
-                $chkStmt = $pdo->prepare("SELECT TABLE_NAME, TABLE_ROWS, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :tbl LIMIT 1");
-                $chkStmt->execute(['tbl' => $vt]);
-                $chkRow = $chkStmt->fetch(PDO::FETCH_ASSOC);
+                // Cek existence di database target khusus (misal: pdam) terlebih dahulu
+                $chkRow = null;
+                if (!empty($preferredDb)) {
+                    $chkStmt = $pdo->prepare("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_ROWS, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = :schema AND TABLE_NAME = :tbl LIMIT 1");
+                    $chkStmt->execute(['schema' => $preferredDb, 'tbl' => $tbl]);
+                    $chkRow = $chkStmt->fetch(PDO::FETCH_ASSOC);
+                }
+
+                // Fallback ke DATABASE() aktif (simpadu) jika tidak dispesifikasi atau tidak ditemukan di preferredDb
+                if (!$chkRow) {
+                    $chkStmt = $pdo->prepare("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_ROWS, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :tbl LIMIT 1");
+                    $chkStmt->execute(['tbl' => $tbl]);
+                    $chkRow = $chkStmt->fetch(PDO::FETCH_ASSOC);
+                }
+
                 if ($chkRow) {
                     $exists = true;
                     $engine = $chkRow['ENGINE'] ?? 'InnoDB';
-                    $cntStmt = $pdo->query("SELECT COUNT(*) FROM `{$vt}`");
+                    $schema = $chkRow['TABLE_SCHEMA'];
+                    $actualTable = $chkRow['TABLE_NAME'];
+                    $cntStmt = $pdo->query("SELECT COUNT(*) FROM `{$schema}`.`{$actualTable}`");
                     $rowCount = $cntStmt ? intval($cntStmt->fetchColumn()) : intval($chkRow['TABLE_ROWS']);
                 }
             } catch (Exception $e) {}
+
             $tableHealth[] = [
-                'table_name' => $vt,
+                'table_name' => $displayName,
                 'exists' => $exists,
                 'row_count' => $rowCount,
                 'engine' => $engine,
